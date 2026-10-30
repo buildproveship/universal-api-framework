@@ -3,11 +3,14 @@ import type { AddressInfo } from 'node:net';
 
 export interface SyntheticApi {
   readonly origin: string;
+  readonly requestCount: number;
   close(): Promise<void>;
 }
 
-export async function startSyntheticApi(): Promise<SyntheticApi> {
+export async function startSyntheticApi(options: { redirectTarget?: string } = {}): Promise<SyntheticApi> {
+  let requestCount = 0;
   const server = createServer((request, response) => {
+    requestCount += 1;
     response.setHeader('Content-Type', 'application/json; charset=utf-8');
 
     if (request.method !== 'GET') {
@@ -26,10 +29,19 @@ export async function startSyntheticApi(): Promise<SyntheticApi> {
         response.writeHead(200);
         response.end(JSON.stringify({ id: 'widget-1', name: 'Synthetic widget', active: true }));
         return;
+      case '/redirect':
+        if (options.redirectTarget) {
+          response.writeHead(302, { Location: options.redirectTarget });
+          response.end();
+          return;
+        }
+        break;
       default:
-        response.writeHead(404);
-        response.end(JSON.stringify({ error: 'not_found' }));
+        break;
     }
+
+    response.writeHead(404);
+    response.end(JSON.stringify({ error: 'not_found' }));
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -44,6 +56,9 @@ export async function startSyntheticApi(): Promise<SyntheticApi> {
 
   return {
     origin: `http://127.0.0.1:${address.port}`,
+    get requestCount() {
+      return requestCount;
+    },
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.close((error) => {
