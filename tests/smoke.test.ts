@@ -2,12 +2,15 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { startSyntheticApi } from './fixtures/synthetic-api.js';
 import type { SyntheticApi } from './fixtures/synthetic-api.js';
+import { createLocalHttpClient } from './http-client.js';
 
 describe('Given an owned local synthetic API', { timeout: 15_000 }, () => {
   let api: SyntheticApi;
+  let client: ReturnType<typeof createLocalHttpClient>;
 
   before(async () => {
     api = await startSyntheticApi();
+    client = createLocalHttpClient(api.origin);
   });
 
   after(async () => {
@@ -15,11 +18,7 @@ describe('Given an owned local synthetic API', { timeout: 15_000 }, () => {
   });
 
   function request(path: string, method = 'GET'): Promise<Response> {
-    return fetch(new URL(path, api.origin), {
-      method,
-      redirect: 'error',
-      signal: AbortSignal.timeout(5_000),
-    });
+    return client.request(path, { method });
   }
 
   it('When health is requested, then it returns HTTP 200 and identifies the synthetic service', async () => {

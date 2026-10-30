@@ -21,15 +21,17 @@ variables, account, Docker, or cloud infrastructure. No hosted CI is configured.
 `npm test` is equivalent to `npm run test:smoke`. It compiles the TypeScript and
 runs Node's built-in BDD test runner with readable Given/When/Then scenario names.
 `npm run build` only compiles. Generated JavaScript lives in the ignored `dist/`
-directory; the smoke command runs the explicitly named compiled test file.
+directory; the smoke command runs the compiled test files.
 
 ## What the smoke tests prove
 
 Each run starts its own owned synthetic HTTP API on IPv4 loopback (`127.0.0.1`)
 with an OS-assigned ephemeral port, awaits readiness, and closes it after the
-suite, including assertion failures. There is no configurable target URL and
-redirects are rejected. Requests have a five-second timeout; the suite has a
-15-second timeout. Runs use fixed fixture data and no persistent state.
+suite, including assertion failures. The HTTP client sends requests only to the
+fixture origin explicitly configured for that client. It rejects non-loopback,
+different-origin and redirect destinations before they can receive a request.
+Requests have a five-second timeout; the suite has a 15-second timeout. Runs
+use fixed fixture data and no persistent state.
 
 | Given the local synthetic API | When | Then |
 | --- | --- | --- |
@@ -47,12 +49,15 @@ The fixture in `tests/fixtures/synthetic-api.ts` belongs only to these tests; it
 routes and payloads are not a shared execution contract. Scenarios live in
 `tests/smoke.test.ts`. To add a local scenario, add deterministic fixture behavior
 and a named `it` assertion there, keeping all requests on the owned loopback API.
-Do not introduce a customer or remote target.
+`tests/target-safety.test.ts` verifies that other local fixtures, redirect
+destinations and unsupported loopback/address forms receive no requests. Do not
+introduce a customer or remote target.
 
 ## Scope and dependency boundary
 
 This repository currently provides TypeScript setup, readable local BDD smoke
-checks, meaningful positive/negative assertions, and setup documentation only.
+checks, request-boundary loopback target safety, meaningful positive/negative
+assertions, and setup documentation only.
 RRDAPI-8 remains post-MVP; **the full ticket is not complete** and still depends on
 [RRDSCRUM-53](https://noisegatemusicstudios.atlassian.net/browse/RRDSCRUM-53).
 
