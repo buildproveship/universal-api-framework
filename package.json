@@ -1,0 +1,20 @@
+{
+  "name": "universal-api-framework",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Standalone local-only API smoke test scaffold",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "test": "npm run build && node --test --test-reporter=spec dist/tests/smoke.test.js",
+    "test:smoke": "npm test"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.0",
+    "typescript": "5.9.3"
+  }
+}
