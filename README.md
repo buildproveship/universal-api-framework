@@ -65,3 +65,80 @@ Shared execution contracts, the dependent execution engine, integrations,
 customer execution, credentials, provisioning, cloud setup, paid services and
 automatic hosted CI are deliberately excluded. Nothing here freezes or modifies
 those future interfaces or advances the Jira ticket.
+
+## Inactive OpenAPI intake preflight (RRDAPI-14)
+
+`src/intake/preflight.ts` exports an in-memory preparation function for synthetic
+JSON/YAML strings. It is not connected to an upload endpoint, UI, store, runner,
+identity service or customer intake. RRDAPI-2/8 execution remains deferred.
+
+The caller must supply every `PreflightPolicy` setting: UTF-8 byte limit, AST depth
+and node limits, reference count limit, deadline, worker V8 heap and stack settings,
+and an exact OpenAPI version allow-list. Missing/invalid settings fail closed.
+Each configuration value is read once into a validated plain snapshot; that same
+snapshot controls the byte check, parser transfer, resource flags and deadline.
+Inherited/non-enumerable settings are preserved, not silently lost in IPC.
+Numbers in the tests are synthetic test configuration, not approved product limits.
+The allow-list recognizes 3.0.x/3.1.x version declarations only; it does not promise
+schema support. Policy comes from trusted application configuration, never the
+uploaded document or a customer-selected bypass.
+
+The pinned `yaml` parser inspects one document's AST without alias expansion or
+reference resolution. JSON additionally passes native JSON syntax parsing. The
+preflight rejects duplicate keys, multiple documents, explicit YAML tags, anchors,
+aliases, merge keys, complex/non-string keys, non-finite numbers, external `$ref`
+values, and unsupported URI scope/dynamic/anchor keywords. Local JSON Pointer
+references must first satisfy RFC 3986 URI-fragment syntax, then JSON Pointer
+escape syntax; target resolution is not performed. The conservative check visits
+all mappings, including examples/extensions; it may reject otherwise valid OpenAPI.
+Imported strings are data and are never evaluated or used as instructions.
+
+Parsing happens in a short-lived Node **child process**, not a Worker thread:
+Worker startup OOM can abort its caller, even with resource limits and error
+handlers ([Node documentation](https://nodejs.org/api/worker_threads.html)).
+The child receives no inherited environment/preload flags, ignores stdout/stderr,
+and communicates only the input and fixed result over IPC. Its exit and IPC closure
+are awaited before returning, including timeout/error paths. Fatal parser V8
+failures become `worker-failed` without aborting the caller's V8 process.
+
+The existing `workerHeapMb` setting now controls the child's V8 old-space limit;
+`workerStackMb` controls its V8 stack size. Conservative technical startup floors
+are **32 MiB old space and 4 MiB stack**, tested with the pinned parser on Linux
+Node **22.23.4 and 24.22.1**. Smaller settings fail closed before process creation;
+settings must also fit V8's signed integer flags (stack converted to KiB). These
+floors are implementation constraints, not product defaults or a promise that
+every admitted document fits. Other OS/runtime combinations need validation.
+
+Structure limits apply during AST inspection, after parsing; the byte limit applies
+before process creation. This is still not a whole-process/host memory sandbox:
+V8 limits exclude external/native allocations, and the caller holds and serializes
+the input. Host-wide OOM, concurrency, OS crash dumps and other process permissions
+are not controlled here. Future intake still needs approved request/concurrency
+limits, process resource containment and crash-artifact handling before activation.
+
+Results contain only a fixed status/error code and, where available, a zero-based
+UTF-16 source offset. No parser messages, filenames, keys, values, source lines or
+reference destinations leave the worker. Success explicitly returns
+`schemaValidated: false` and `executionAuthorized: false`; it is not import approval.
+No document-directed file reads, network requests or code execution are performed.
+
+Run `npm run typecheck` and `npm test`. The synthetic suite checks policy failures,
+UTF-8 boundaries, structural/reference bounds, unsafe YAML, duplicate/malformed
+documents, external references, secret-safe diagnostics, worker timeout cleanup,
+and zero requests to an owned loopback target. Resource regressions run in an extra
+child process so a regression cannot abort the test runner. They verify rejection
+below the startup floors, success at the floors, and recovery after parser heap
+exhaustion. On Unix, run `ulimit -c 0` before tests to suppress OS core dumps from
+the intentional synthetic exhaustion probe. Existing smoke/target-safety tests
+continue unchanged.
+
+Still required for RRDAPI-14: full maintained OpenAPI schema validation and resolved
+source-located inventory; immutable scoped persistence, original/normalized hashes,
+idempotency and version differences; authenticated access/provenance contracts;
+approved encryption, retention/deletion and redaction policies; product limits and
+supported-version decisions. None is inferred from preflight success. Review
+approval remains separate from execution permission.
+
+RRDAPI-13's selected Contract Intake visual remains a separate Copilot-owned gate.
+Its selection does not settle the outstanding product/security policies. This
+slice adds no UI and makes no visual fidelity claim.
