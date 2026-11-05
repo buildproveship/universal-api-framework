@@ -79,4 +79,3 @@ export async function inspectInput({ source, format, policy, mode }: IntakeInput
   }
   return { status: 'preflight-passed', schemaValidated: false, executionAuthorized: false };
 }
-

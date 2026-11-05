@@ -158,15 +158,23 @@ version policy. Other versions, including 3.1 even when explicitly allowed by th
 caller, return `schema-version-unsupported`. Swagger Parser 13 alone accepts some
 invalid 3.1 Schema Objects; this implementation makes no 3.1 validation claim.
 
-Pinned `@apidevtools/swagger-parser` 13.0.0 validates the in-memory document against
-its maintained OpenAPI 3.0 document schema and resolves local pointers. Its minimum
+Pinned `@apidevtools/openapi-schemas` 2.1.0 and `ajv-draft-04` 1.0.0 validate
+the original and resolved in-memory document against the maintained OpenAPI 3.0
+schema. Original validation checks reference placement before transformation.
+Local pointers must traverse exact own properties under RFC 6901, including
+escaped tokens and canonical array indices; inherited properties and joined
+missing tokens cannot resolve. Pinned `@apidevtools/swagger-parser` 13.0.0
+performs dereferencing with the restrictions below. Its minimum
 supported Node version requires the package engine floor of 22.12.0. External
 references are rejected by preflight **before validator invocation**; file/HTTP
 resolvers and secondary JSON/YAML/text/binary input parsers are additionally disabled.
 Circular references return `circular-reference-unsupported` in this bounded stage, including
-otherwise legitimate recursive schemas. No declared servers are contacted.
+otherwise legitimate recursive schemas. The pinned resolver also rejects some
+valid percent-encoded literal keys (for example `a%252Fb` targeting `a%2Fb`);
+these return `document-schema-invalid`, so rejection is not proof that a document
+violates OpenAPI. No declared servers are contacted.
 
-An explicit guard enforces the standard's
+Guards on original and resolved component maps enforce the standard's
 [component-map naming rule](https://spec.openapis.org/oas/v3.0.3.html#components-object):
 the maintained schema otherwise skips some invalidly named entries. This uses the
 OpenAPI rule, not a new product/domain schema. The validator is not a proof of full

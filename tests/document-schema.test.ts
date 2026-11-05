@@ -26,6 +26,52 @@ const success = {
 };
 
 describe('Offline OpenAPI 3.0 document-schema validation', () => {
+  it('Given local pointers, then only exact own-property paths resolve', async () => {
+    for (const [ref, extension, passes] of [
+      ['#/components/schemas/__proto__', {}, false],
+      ['#/x-schema/a/b', { 'a/b': { type: 'string' } }, false],
+      ['#/x-schema/a~1b', { 'a/b': { type: 'string' } }, true],
+      ['#/x-schema/a/b', { a: { b: { type: 'string' } } }, true],
+      ['#/x-schema/__proto__', JSON.parse('{"__proto__":{"type":"string"}}'), true],
+      ['#/x-schema/a%7E1b', { 'a/b': { type: 'string' } }, true],
+      ['#/x-schema/a~01b', { 'a~1b': { type: 'string' } }, true],
+      // The pinned resolver rejects this valid encoding; never claim full conformance.
+      ['#/x-schema/a%252Fb', { 'a%2Fb': { type: 'string' } }, false],
+      ['#/x-schema/0', [{ type: 'string' }], true],
+      ['#/x-schema/00', [{ type: 'string' }], false],
+      ['#/x-schema/length', [{ type: 'string' }], false],
+      ['#/x-schema/-', [{ type: 'string' }], false],
+      ['#/x-schema/1', [{ type: 'string' }], false],
+    ] as const) {
+      const candidate = { ...document(), 'x-schema': extension };
+      candidate.components.schemas.Alias.$ref = ref;
+      const result = await validateDocumentSchema(JSON.stringify(candidate), 'json', policy);
+      assert.equal(result.status, passes ? 'document-schema-passed' : 'rejected', ref);
+      if (!passes && result.status === 'rejected') assert.equal(result.code, 'document-schema-invalid');
+    }
+  });
+
+  it('Given a reference in a forbidden location, then transformation cannot bypass schema checks', async () => {
+    for (const schemas of [{ 'bad/name': { type: 'INVALID' } }, { Valid: { type: 'string' } }]) {
+      const result = await validateDocumentSchema(JSON.stringify({
+        ...document(), components: { $ref: '#/x-components' }, 'x-components': { schemas },
+      }), 'json', policy);
+      assert.equal(result.status, 'rejected');
+      if (result.status === 'rejected') assert.equal(result.code, 'document-schema-invalid');
+    }
+  });
+
+  it('Given references in permitted OpenAPI locations, then valid parameters and responses still resolve', async () => {
+    const candidate = { ...document(), paths: { '/item': { get: {
+      parameters: [{ $ref: '#/components/parameters/Query' }],
+      responses: { '200': { $ref: '#/components/responses/Ok' } },
+    } } }, components: { ...document().components,
+      parameters: { Query: { name: 'q', in: 'query', schema: { type: 'string' } } },
+      responses: { Ok: { description: 'Synthetic' } },
+    } };
+    assert.deepEqual(await validateDocumentSchema(JSON.stringify(candidate), 'json', policy), success);
+  });
+
   it('Given every claimed technical version, then document schemas and local references are checked', async () => {
     for (const version of ['3.0.0', '3.0.1', '3.0.2', '3.0.3', '3.0.4']) {
       assert.deepEqual(await validateDocumentSchema(JSON.stringify(document(version)), 'json', policy), success);
@@ -106,7 +152,7 @@ describe('Offline OpenAPI 3.0 document-schema validation', () => {
   });
 
   it('Given external references, unsafe YAML or excluded versions, then the validator is never invoked', async t => {
-    const spy = t.mock.method(SwaggerParser, 'validate', async () => { throw new Error('must not invoke'); });
+    const spy = t.mock.method(SwaggerParser.prototype, 'dereference', async () => { throw new Error('must not invoke'); });
     for (const ref of ['https://example.invalid/private', 'file:///synthetic-private.yaml', '../synthetic.yaml']) {
       const candidate = document();
       candidate.components.schemas.Alias.$ref = ref;
