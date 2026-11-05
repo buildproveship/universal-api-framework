@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { preflight, type FailureCode, type PreflightPolicy } from '../src/intake/preflight.js';
 import { startSyntheticApi } from './fixtures/synthetic-api.js';
 
@@ -19,6 +21,71 @@ async function rejected(source: string, code: FailureCode, overrides = {}, forma
 }
 
 describe('Inactive synthetic contract intake preflight', () => {
+  it('Given inherited or non-enumerable limits, then the validated limits survive transfer', async () => {
+    const cases = [
+      ['maxNodes', valid, 'nodes-exceeded'],
+      ['maxDepth', valid, 'depth-exceeded'],
+      ['maxReferences', 'openapi: 3.0.3\na: {$ref: "#/a"}\nb: {$ref: "#/b"}', 'references-exceeded'],
+    ] as const;
+    for (const [key, source, code] of cases) {
+      for (const inherited of [false, true]) {
+        const configured = { ...policy };
+        Reflect.deleteProperty(configured, key);
+        if (inherited) Object.setPrototypeOf(configured, { [key]: 1 });
+        else Object.defineProperty(configured, key, { value: 1, enumerable: false });
+        const result = await preflight(source, 'yaml', configured);
+        assert.equal(result.status, 'rejected');
+        if (result.status === 'rejected') assert.equal(result.code, code);
+      }
+    }
+  });
+
+  it('Given unsafe runtime resources, then isolated callers survive and receive a policy rejection', () => {
+    for (const mode of ['bad-heap', 'below-heap-floor', 'bad-stack', 'below-stack-floor']) {
+      const child = spawnSync(process.execPath, [fileURLToPath(new URL('./fixtures/intake-resource-probe.js', import.meta.url)), mode], {
+        encoding: 'utf8', timeout: 20_000, killSignal: 'SIGKILL', maxBuffer: 16_384,
+      });
+      assert.equal(child.error, undefined);
+      assert.equal(child.status, 0, `mode=${mode} status=${child.status} signal=${child.signal}`);
+      assert.deepEqual(JSON.parse(child.stdout), { status: 'rejected', code: 'policy-required' });
+    }
+  });
+
+  it('Given resource floors and parser heap exhaustion, then the isolated caller survives and can recover', () => {
+    for (const mode of ['minimum', 'heap-pressure']) {
+      const child = spawnSync(process.execPath, [fileURLToPath(new URL('./fixtures/intake-resource-probe.js', import.meta.url)), mode], {
+        encoding: 'utf8', timeout: 20_000, killSignal: 'SIGKILL', maxBuffer: 16_384,
+      });
+      assert.equal(child.error, undefined);
+      assert.equal(child.status, 0, `mode=${mode} status=${child.status} signal=${child.signal}`);
+      const output = JSON.parse(child.stdout);
+      if (mode === 'minimum') assert.equal(output.status, 'preflight-passed');
+      else {
+        assert.deepEqual(output.result, { status: 'rejected', code: 'worker-failed' });
+        assert.equal(output.recovery.status, 'preflight-passed');
+      }
+    }
+  });
+
+  it('Given configuration accessors, then each value is read once into validated plain data', async () => {
+    let reads = 0;
+    const configured = { ...policy, get maxNodes() { reads++; return reads === 1 ? 1 : 500; } };
+    const result = await preflight(valid, 'json', configured);
+    assert.equal(reads, 1);
+    assert.equal(result.status, 'rejected');
+    if (result.status === 'rejected') assert.equal(result.code, 'nodes-exceeded');
+    const throwing = { ...policy, get maxNodes(): number { throw new Error('synthetic private configuration'); } };
+    assert.deepEqual(await preflight(valid, 'json', throwing), { status: 'rejected', code: 'policy-required' });
+  });
+
+  it('Given malformed URI fragments, then syntax fails before pointer decoding', async () => {
+    for (const ref of ['#/a b', '#/a#b', '#/a\nb', '#/a\tb', '#/a\\b', '#/a[0]', '#/é']) {
+      await rejected(JSON.stringify({ openapi: '3.0.3', a: { $ref: ref } }), 'reference-unsupported');
+    }
+    for (const ref of ['#/a%20b', '#/a%23b', '#/%C3%A9', '#/a~1b', '#/a?b', '#/a%0Ab']) {
+      assert.equal((await preflight(JSON.stringify({ openapi: '3.0.3', a: { $ref: ref } }), 'json', policy)).status, 'preflight-passed');
+    }
+  });
   it('Given JSON and YAML, when preflight passes, then schema and execution approval stay false', async () => {
     for (const [source, format] of [[valid, 'json'], ['openapi: 3.1.0\npaths: {}', 'yaml']] as const) {
       assert.deepEqual(await preflight(source, format, policy), {

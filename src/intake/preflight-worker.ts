@@ -1,12 +1,11 @@
-import { parentPort, workerData } from 'node:worker_threads';
 import { isAlias, isMap, isNode, isScalar, isSeq, parseDocument } from 'yaml';
 import { reject, type PreflightPolicy, type PreflightResult } from './preflight.js';
 
-const { source, format, policy } = workerData as {
+interface Input {
   source: string; format: 'json' | 'yaml'; policy: PreflightPolicy;
-};
+}
 
-function inspect(): PreflightResult {
+function inspect({ source, format, policy }: Input): PreflightResult {
   // JSON must actually be JSON, not YAML's more permissive syntax.
   if (format === 'json') {
     try { JSON.parse(source); } catch { return reject('syntax-invalid'); }
@@ -49,6 +48,11 @@ function inspect(): PreflightResult {
           if (typeof value !== 'string' || !(value === '#' || value.startsWith('#/'))) {
             return reject('reference-unsupported', pair.key.range?.[0]);
           }
+          // RFC 3986 fragment = *(pchar / '/' / '?'), with pct-encoded octets.
+          // Check raw URI syntax first: URL() would normalize forbidden whitespace.
+          if (!/^#(?:[A-Za-z0-9._~!$&'()*+,;=:@/?-]|%[0-9A-Fa-f]{2})*$/.test(value)) {
+            return reject('reference-unsupported', pair.key.range?.[0]);
+          }
           // Only syntactic local JSON Pointer references; resolution remains a later gate.
           let decoded: string;
           try { decoded = decodeURIComponent(value); } catch { return reject('reference-unsupported', pair.key.range?.[0]); }
@@ -65,5 +69,9 @@ function inspect(): PreflightResult {
   return { status: 'preflight-passed', schemaValidated: false, executionAuthorized: false };
 }
 
-try { parentPort?.postMessage(inspect()); }
-catch { parentPort?.postMessage(reject('worker-failed')); }
+process.once('message', (input: Input) => {
+  let result: PreflightResult;
+  try { result = inspect(input); }
+  catch { result = reject('worker-failed'); }
+  process.send?.(result);
+});

@@ -75,6 +75,9 @@ identity service or customer intake. RRDAPI-2/8 execution remains deferred.
 The caller must supply every `PreflightPolicy` setting: UTF-8 byte limit, AST depth
 and node limits, reference count limit, deadline, worker V8 heap and stack settings,
 and an exact OpenAPI version allow-list. Missing/invalid settings fail closed.
+Each configuration value is read once into a validated plain snapshot; that same
+snapshot controls the byte check, parser transfer, resource flags and deadline.
+Inherited/non-enumerable settings are preserved, not silently lost in IPC.
 Numbers in the tests are synthetic test configuration, not approved product limits.
 The allow-list recognizes 3.0.x/3.1.x version declarations only; it does not promise
 schema support. Policy comes from trusted application configuration, never the
@@ -85,17 +88,33 @@ reference resolution. JSON additionally passes native JSON syntax parsing. The
 preflight rejects duplicate keys, multiple documents, explicit YAML tags, anchors,
 aliases, merge keys, complex/non-string keys, non-finite numbers, external `$ref`
 values, and unsupported URI scope/dynamic/anchor keywords. Local JSON Pointer
-references are checked syntactically only. The conservative reference check visits
+references must first satisfy RFC 3986 URI-fragment syntax, then JSON Pointer
+escape syntax; target resolution is not performed. The conservative check visits
 all mappings, including examples/extensions; it may reject otherwise valid OpenAPI.
 Imported strings are data and are never evaluated or used as instructions.
 
-Parsing happens in a worker with caller-specified V8 heap/stack limits and a
-termination deadline. Structure limits apply during AST inspection, after parsing;
-the byte limit applies before starting the worker. These are preparation safeguards,
-not a whole-process memory sandbox: V8 limits exclude external allocations and the
-caller already holds the input string. A future intake boundary still needs approved
-request/concurrency limits and process-level resource containment. The worker is
-terminated before the result is returned, including timeout and error paths.
+Parsing happens in a short-lived Node **child process**, not a Worker thread:
+Worker startup OOM can abort its caller, even with resource limits and error
+handlers ([Node documentation](https://nodejs.org/api/worker_threads.html)).
+The child receives no inherited environment/preload flags, ignores stdout/stderr,
+and communicates only the input and fixed result over IPC. Its exit and IPC closure
+are awaited before returning, including timeout/error paths. Fatal parser V8
+failures become `worker-failed` without aborting the caller's V8 process.
+
+The existing `workerHeapMb` setting now controls the child's V8 old-space limit;
+`workerStackMb` controls its V8 stack size. Conservative technical startup floors
+are **32 MiB old space and 4 MiB stack**, tested with the pinned parser on Linux
+Node **22.23.4 and 24.22.1**. Smaller settings fail closed before process creation;
+settings must also fit V8's signed integer flags (stack converted to KiB). These
+floors are implementation constraints, not product defaults or a promise that
+every admitted document fits. Other OS/runtime combinations need validation.
+
+Structure limits apply during AST inspection, after parsing; the byte limit applies
+before process creation. This is still not a whole-process/host memory sandbox:
+V8 limits exclude external/native allocations, and the caller holds and serializes
+the input. Host-wide OOM, concurrency, OS crash dumps and other process permissions
+are not controlled here. Future intake still needs approved request/concurrency
+limits, process resource containment and crash-artifact handling before activation.
 
 Results contain only a fixed status/error code and, where available, a zero-based
 UTF-16 source offset. No parser messages, filenames, keys, values, source lines or
@@ -106,7 +125,11 @@ No document-directed file reads, network requests or code execution are performe
 Run `npm run typecheck` and `npm test`. The synthetic suite checks policy failures,
 UTF-8 boundaries, structural/reference bounds, unsafe YAML, duplicate/malformed
 documents, external references, secret-safe diagnostics, worker timeout cleanup,
-and zero requests to an owned loopback target. Existing smoke/target-safety tests
+and zero requests to an owned loopback target. Resource regressions run in an extra
+child process so a regression cannot abort the test runner. They verify rejection
+below the startup floors, success at the floors, and recovery after parser heap
+exhaustion. On Unix, run `ulimit -c 0` before tests to suppress OS core dumps from
+the intentional synthetic exhaustion probe. Existing smoke/target-safety tests
 continue unchanged.
 
 Still required for RRDAPI-14: full maintained OpenAPI schema validation and resolved
