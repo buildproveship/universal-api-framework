@@ -18,11 +18,20 @@ export type FailureCode =
   | 'nodes-exceeded' | 'references-exceeded' | 'reference-unsupported'
   | 'version-not-allowed' | 'root-invalid';
 
+export type SchemaFailureCode = FailureCode | 'schema-version-unsupported' | 'document-schema-invalid' | 'circular-reference-unsupported';
+
 export type PreflightResult =
   | { status: 'preflight-passed'; schemaValidated: false; executionAuthorized: false }
   | { status: 'rejected'; code: FailureCode; offset?: number };
 
-export function reject(code: FailureCode, offset?: number): PreflightResult {
+export type SchemaValidationResult =
+  | { status: 'document-schema-passed'; documentSchemaValidated: true;
+      specificationConformanceValidated: false; importApproved: false; executionAuthorized: false }
+  | { status: 'rejected'; code: SchemaFailureCode; offset?: number };
+
+export type IntakeResult = PreflightResult | SchemaValidationResult;
+
+export function reject<Code extends SchemaFailureCode>(code: Code, offset?: number): { status: 'rejected'; code: Code; offset?: number } {
   return offset === undefined ? { status: 'rejected', code } : { status: 'rejected', code, offset };
 }
 
@@ -72,6 +81,29 @@ export async function preflight(
   format: 'json' | 'yaml',
   policy?: PreflightPolicy,
 ): Promise<PreflightResult> {
+  const result = await runIntake(source, format, policy, 'preflight');
+  if (result.status === 'rejected') {
+    const code = result.code;
+    return code === 'schema-version-unsupported' || code === 'document-schema-invalid' || code === 'circular-reference-unsupported'
+      ? reject('worker-failed') : reject(code, result.offset);
+  }
+  return result.status === 'document-schema-passed' ? reject('worker-failed') : result;
+}
+
+/** Offline document-schema validation only; never import or execution approval. */
+export async function validateDocumentSchema(
+  source: string,
+  format: 'json' | 'yaml',
+  policy?: PreflightPolicy,
+): Promise<SchemaValidationResult> {
+  const result = await runIntake(source, format, policy, 'schema');
+  return result.status === 'preflight-passed' ? reject('worker-failed') : result;
+}
+
+async function runIntake(
+  source: string, format: 'json' | 'yaml', policy: PreflightPolicy | undefined,
+  mode: 'preflight' | 'schema',
+): Promise<IntakeResult> {
   const configured = snapshotPolicy(policy);
   if (!configured) return reject('policy-required');
   if (typeof source !== 'string' || (format !== 'json' && format !== 'yaml')) return reject('input-invalid');
@@ -96,22 +128,22 @@ export async function preflight(
     return reject('worker-failed');
   }
   return new Promise(resolve => {
-    let outcome: PreflightResult | undefined;
-    const finish = (result: PreflightResult) => {
+    let outcome: IntakeResult | undefined;
+    const finish = (result: IntakeResult) => {
       if (outcome) return;
       outcome = result;
       clearTimeout(timer);
       worker.kill('SIGKILL');
     };
     const timer = setTimeout(() => { finish(reject('timeout')); }, configured.timeoutMs);
-    worker.once('message', (result: PreflightResult) => { finish(result); });
+    worker.once('message', (result: IntakeResult) => { finish(result); });
     worker.once('error', () => { finish(reject('worker-failed')); });
     // Resolve only after the child has exited and IPC/stdio have closed.
     worker.once('close', () => {
       clearTimeout(timer);
       resolve(outcome ?? reject('worker-failed'));
     });
-    worker.send({ source, format, policy: configured }, error => {
+    worker.send({ source, format, policy: configured, mode }, error => {
       if (error) finish(reject('worker-failed'));
     });
   });
