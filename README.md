@@ -169,10 +169,12 @@ supported Node version requires the package engine floor of 22.12.0. External
 references are rejected by preflight **before validator invocation**; file/HTTP
 resolvers and secondary JSON/YAML/text/binary input parsers are additionally disabled.
 Circular references return `circular-reference-unsupported` in this bounded stage, including
-otherwise legitimate recursive schemas. The pinned resolver also rejects some
-valid percent-encoded literal keys (for example `a%252Fb` targeting `a%2Fb`);
-these return `document-schema-invalid`, so rejection is not proof that a document
-violates OpenAPI. No declared servers are contacted.
+otherwise legitimate recursive schemas. Percent-encoded references return
+`reference-unsupported` before resolver invocation: the pinned resolver may decode
+more than once and select a different target, even when both target names exist.
+This conservative technical restriction includes otherwise valid encodings; plain
+JSON Pointer escapes (`~0`, `~1`) remain supported. Rejection is not proof that a
+document violates OpenAPI. No declared servers are contacted.
 
 Guards on original and resolved component maps enforce the standard's
 [component-map naming rule](https://spec.openapis.org/oas/v3.0.3.html#components-object):

@@ -33,9 +33,9 @@ describe('Offline OpenAPI 3.0 document-schema validation', () => {
       ['#/x-schema/a~1b', { 'a/b': { type: 'string' } }, true],
       ['#/x-schema/a/b', { a: { b: { type: 'string' } } }, true],
       ['#/x-schema/__proto__', JSON.parse('{"__proto__":{"type":"string"}}'), true],
-      ['#/x-schema/a%7E1b', { 'a/b': { type: 'string' } }, true],
+      ['#/x-schema/a%7E1b', { 'a/b': { type: 'string' } }, false],
       ['#/x-schema/a~01b', { 'a~1b': { type: 'string' } }, true],
-      // The pinned resolver rejects this valid encoding; never claim full conformance.
+      // Percent-encoded refs are explicitly outside the supported capability.
       ['#/x-schema/a%252Fb', { 'a%2Fb': { type: 'string' } }, false],
       ['#/x-schema/0', [{ type: 'string' }], true],
       ['#/x-schema/00', [{ type: 'string' }], false],
@@ -47,7 +47,7 @@ describe('Offline OpenAPI 3.0 document-schema validation', () => {
       candidate.components.schemas.Alias.$ref = ref;
       const result = await validateDocumentSchema(JSON.stringify(candidate), 'json', policy);
       assert.equal(result.status, passes ? 'document-schema-passed' : 'rejected', ref);
-      if (!passes && result.status === 'rejected') assert.equal(result.code, 'document-schema-invalid');
+      if (!passes && result.status === 'rejected') assert.equal(result.code, ref.includes('%') ? 'reference-unsupported' : 'document-schema-invalid');
     }
   });
 
@@ -70,6 +70,37 @@ describe('Offline OpenAPI 3.0 document-schema validation', () => {
       responses: { Ok: { description: 'Synthetic' } },
     } };
     assert.deepEqual(await validateDocumentSchema(JSON.stringify(candidate), 'json', policy), success);
+  });
+
+  it('Given encoded target collisions, then the resolver cannot validate a different target', async t => {
+    const cases = [
+      ['a%252Fb', 'a%2Fb', 'a/b'],
+      ['a%2520b', 'a%20b', 'a b'],
+      ['a%257E1b', 'a%7E1b', 'a/b'],
+    ] as const;
+    for (const [encoded, intended, alternate] of cases) {
+      for (const intendedType of ['INVALID', 'string']) {
+        const candidate = { ...document(), 'x-schema': {
+          [intended]: { type: intendedType },
+          [alternate]: { type: intendedType === 'INVALID' ? 'string' : 'INVALID' },
+        } };
+        candidate.components.schemas.Alias.$ref = '#/x-schema/' + encoded;
+        // One URI-fragment decode selects the intended own property.
+        const token = decodeURIComponent(encoded).replaceAll('~1', '/').replaceAll('~0', '~');
+        assert.equal(token, intended);
+        assert.equal(candidate['x-schema'][token]?.type, intendedType);
+        const result = await validateDocumentSchema(JSON.stringify(candidate), 'json', policy);
+        assert.deepEqual(result, { status: 'rejected', code: 'reference-unsupported' }, encoded + ':' + intendedType);
+      }
+    }
+    const spy = t.mock.method(SwaggerParser.prototype, 'dereference', async () => { throw new Error('must not resolve ambiguous encoding'); });
+    const nested = { ...document(), 'x-schema': {
+      'a%2Fb': { type: 'INVALID' }, a: { b: { type: 'string' } },
+    } };
+    nested.components.schemas.Alias.$ref = '#/x-schema/a%252Fb';
+    const result = await inspectInput({ source: JSON.stringify(nested), format: 'json', policy, mode: 'schema' });
+    assert.deepEqual(result, { status: 'rejected', code: 'reference-unsupported' });
+    assert.equal(spy.mock.callCount(), 0);
   });
 
   it('Given every claimed technical version, then document schemas and local references are checked', async () => {

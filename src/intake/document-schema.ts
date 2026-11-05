@@ -25,7 +25,8 @@ export async function validateParsedDocument(doc: Document.Parsed): Promise<Sche
       }
     }
     const original: unknown = doc.toJS();
-    if (!strictReferences(original)) return reject('document-schema-invalid');
+    const referenceFailure = strictReferences(original);
+    if (referenceFailure) return reject(referenceFailure);
     // Validate reference placement before the resolver can replace objects.
     // Use the same maintained OAS schema/options as the pinned validator.
     const validate = new AjvDraft4.default({ allErrors: true, strict: false, validateFormats: false }).compile(openapiV3);
@@ -69,27 +70,31 @@ function componentNamesValid(root: unknown): boolean {
 
 // RFC 6901 traversal is against the original document, without inherited
 // properties, token joining, or implicit dereferencing of intermediate nodes.
-function strictReferences(root: unknown): boolean {
+function strictReferences(root: unknown): 'document-schema-invalid' | 'reference-unsupported' | undefined {
   const pending: unknown[] = [root];
   while (pending.length) {
     const node = pending.pop();
     if (!record(node)) continue;
     if (Object.hasOwn(node, '$ref')) {
-      if (typeof node.$ref !== 'string') return false;
-      const fragment = decodeURIComponent(node.$ref.slice(1));
-      if (fragment !== '' && !fragment.startsWith('/')) return false;
+      if (typeof node.$ref !== 'string') return 'document-schema-invalid';
+      // The pinned resolver may repeatedly URI-decode and select another
+      // target. Until target equivalence is guaranteed, percent-encoded refs
+      // are outside this stage's capability, even when otherwise valid.
+      if (node.$ref.includes('%')) return 'reference-unsupported';
+      const fragment = node.$ref.slice(1);
+      if (fragment !== '' && !fragment.startsWith('/')) return 'document-schema-invalid';
       let target: unknown = root;
       for (const encoded of fragment === '' ? [] : fragment.slice(1).split('/')) {
-        if (/~(?![01])/.test(encoded)) return false;
+        if (/~(?![01])/.test(encoded)) return 'document-schema-invalid';
         const token = encoded.replaceAll('~1', '/').replaceAll('~0', '~');
-        if (!record(target) || !Object.hasOwn(target, token)) return false;
-        if (Array.isArray(target) && !/^(0|[1-9][0-9]*)$/.test(token)) return false;
+        if (!record(target) || !Object.hasOwn(target, token)) return 'document-schema-invalid';
+        if (Array.isArray(target) && !/^(0|[1-9][0-9]*)$/.test(token)) return 'document-schema-invalid';
         target = target[token];
       }
     }
     pending.push(...Object.values(node));
   }
-  return true;
+  return undefined;
 }
 
 function sourceOffset(doc: Document.Parsed, error: unknown): number | undefined {
