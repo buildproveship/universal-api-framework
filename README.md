@@ -6,7 +6,7 @@ This is not a customer API runner or evidence of customer API behavior.
 
 ## Setup and run
 
-Install Node.js 22 or later (with npm), then run from the repository root:
+Install Node.js 22.12 or later (with npm), then run from the repository root:
 
 ```sh
 npm ci
@@ -130,9 +130,11 @@ child process so a regression cannot abort the test runner. They verify rejectio
 below the startup floors, success at the floors, and recovery after parser heap
 exhaustion. On Unix, run `ulimit -c 0` before tests to suppress OS core dumps from
 the intentional synthetic exhaustion probe. Existing smoke/target-safety tests
-continue unchanged.
+continue unchanged. Test files run sequentially so intentional resource-exhaustion
+probes do not compete with another suite's fixed deadlines; policy limits are not
+increased for the tests.
 
-Still required for RRDAPI-14: full maintained OpenAPI schema validation and resolved
+Still required for RRDAPI-14: broader OpenAPI validation and resolved
 source-located inventory; immutable scoped persistence, original/normalized hashes,
 idempotency and version differences; authenticated access/provenance contracts;
 approved encryption, retention/deletion and redaction policies; product limits and
@@ -142,3 +144,57 @@ approval remains separate from execution permission.
 RRDAPI-13's selected Contract Intake visual remains a separate Copilot-owned gate.
 Its selection does not settle the outstanding product/security policies. This
 slice adds no UI and makes no visual fidelity claim.
+
+## Offline OpenAPI 3.0 document-schema validation
+
+`validateDocumentSchema(source, format, policy)` is a separate inactive entry point
+in `src/intake/preflight.ts`. It reuses the same preflight, validated policy snapshot,
+child-process lifetime and resource bounds. Existing `preflight()` results remain
+unchanged and still report `schemaValidated: false`.
+
+The new stage intersects the caller's exact version allow-list with the tested
+technical capability **3.0.0, 3.0.1, 3.0.2, 3.0.3 and 3.0.4**. There is no default
+version policy. Other versions, including 3.1 even when explicitly allowed by the
+caller, return `schema-version-unsupported`. Swagger Parser 13 alone accepts some
+invalid 3.1 Schema Objects; this implementation makes no 3.1 validation claim.
+
+Pinned `@apidevtools/openapi-schemas` 2.1.0 and `ajv-draft-04` 1.0.0 validate
+the original and resolved in-memory document against the maintained OpenAPI 3.0
+schema. Original validation checks reference placement before transformation.
+Local pointers must traverse exact own properties under RFC 6901, including
+escaped tokens and canonical array indices; inherited properties and joined
+missing tokens cannot resolve. Pinned `@apidevtools/swagger-parser` 13.0.0
+performs dereferencing with the restrictions below. Its minimum
+supported Node version requires the package engine floor of 22.12.0. External
+references are rejected by preflight **before validator invocation**; file/HTTP
+resolvers and secondary JSON/YAML/text/binary input parsers are additionally disabled.
+Circular references return `circular-reference-unsupported` in this bounded stage, including
+otherwise legitimate recursive schemas. Percent-encoded references return
+`reference-unsupported` before resolver invocation: the pinned resolver may decode
+more than once and select a different target, even when both target names exist.
+This conservative technical restriction includes otherwise valid encodings; plain
+JSON Pointer escapes (`~0`, `~1`) remain supported. Rejection is not proof that a
+document violates OpenAPI. No declared servers are contacted.
+
+Guards on original and resolved component maps enforce the standard's
+[component-map naming rule](https://spec.openapis.org/oas/v3.0.3.html#components-object):
+the maintained schema otherwise skips some invalidly named entries. This uses the
+OpenAPI rule, not a new product/domain schema. The validator is not a proof of full
+OpenAPI specification conformance, business correctness or execution readiness.
+
+Success is `status: 'document-schema-passed'`, `documentSchemaValidated: true`, with
+`specificationConformanceValidated`, `importApproved` and `executionAuthorized`
+all explicitly **false**. Invalid documents return fixed `document-schema-invalid`
+diagnostics. A UTF-16 offset is included only when a validator path maps to an
+original AST node without crossing a dereferenced mapping; otherwise it is omitted.
+Raw error messages, keys, values, pointers and documents are never returned.
+The numeric offset can identify a containing object for errors about missing fields;
+it is not a fabricated location for an absent field.
+
+Synthetic tests cover every supported technical version, invalid Schema Objects,
+caller-policy intersection, unresolved/circular pointers, original-source locations,
+secret-safe diagnostics, validator non-invocation for external refs, intercepted
+file/HTTP/secondary-parser hooks, process startup failure, deadline and heap-exhaustion
+recovery. The same process/host memory and activation limitations described above
+still apply. No hashes, normalization, version identity, inventory/diff, storage,
+permissions, credentials, UI or live intake are added by this stage.
