@@ -19,7 +19,9 @@ if (
   profile.targetPort !== 'ephemeral-owned-fixture' ||
   !target ||
   !profile.targetHostAllowlist.includes(target[1]) ||
-  Number(target[2]) < 49152 ||
+  target[2] !== __ENV.PERF_OWNED_PORT ||
+  String(Number(target[2])) !== target[2] ||
+  Number(target[2]) < 1024 ||
   Number(target[2]) > 65535
 ) {
   throw new Error('Target is not an approved ephemeral loopback fixture; no requests were sent.');

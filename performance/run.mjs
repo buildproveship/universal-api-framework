@@ -4,12 +4,14 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { createK6Invocation, isolatedK6Environment } from './k6-runtime.mjs';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const configPath = path.join(projectRoot, 'performance', 'config', 'profiles.json');
 const config = JSON.parse(await readFile(configPath, 'utf8'));
 const k6Path = path.join(projectRoot, '.tools', 'k6', 'k6');
 const workloadPath = path.join(projectRoot, 'performance', 'workload.js');
+const k6ConfigPath = path.join(projectRoot, 'performance', 'config', 'k6-isolated.json');
 const summaryDirectory = path.join(projectRoot, '.performance-results');
 const absoluteLimits = {
   maxVus: 2,
@@ -96,7 +98,9 @@ function getRevision() {
 }
 
 function verifyK6() {
-  const result = spawnSync(k6Path, ['version'], { encoding: 'utf8' });
+  const result = spawnSync(k6Path, ['version', '--log-output=stderr'], {
+    encoding: 'utf8', env: isolatedK6Environment(),
+  });
 
   if (result.error || result.status !== 0 || !result.stdout.startsWith('k6 v0.54.0')) {
     throw new Error('Pinned k6 v0.54.0 is required. Install it with npm run perf:install-k6.');
@@ -173,13 +177,10 @@ async function closeServer(server) {
 }
 
 function runK6(environment) {
-  const environmentArguments = Object.entries(environment).flatMap(([key, value]) => [
-    '--env',
-    `${key}=${value}`,
-  ]);
-  const child = spawn(k6Path, ['run', '--quiet', ...environmentArguments, workloadPath], {
+  const invocation = createK6Invocation(environment, workloadPath, k6ConfigPath);
+  const child = spawn(k6Path, invocation.args, {
     cwd: projectRoot,
-    env: process.env,
+    env: invocation.env,
     stdio: ['ignore', 'ignore', 'pipe'],
   });
   let diagnostics = '';
@@ -250,6 +251,7 @@ async function main() {
   try {
     const result = await runK6({
       PERF_TARGET: baseUrl,
+      PERF_OWNED_PORT: new URL(baseUrl).port,
       PERF_WORKLOAD: selection.workload,
       PERF_REVISION: revision.revision,
       PERF_WORKTREE_DIRTY: String(revision.dirty),
