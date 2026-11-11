@@ -11,7 +11,13 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc",
     "test": "npm run build && node --test --test-concurrency=1 --test-reporter=spec dist/tests/*.test.js",
-    "test:smoke": "npm test"
+    "test:smoke": "npm test",
+    "perf:install-k6": "node performance/install-k6.mjs",
+    "perf:smoke": "node performance/run.mjs --profile direct-mock --workload smoke --fixture passing",
+    "perf:fixture-fail": "node performance/run.mjs --profile direct-mock --workload smoke --fixture failing",
+    "perf:baseline": "node performance/run.mjs --profile direct-mock --workload baseline --fixture passing",
+    "perf:dev": "node performance/run.mjs --profile dev --workload smoke",
+    "test:performance": "node --test --test-concurrency=1 --test-reporter=spec tests/performance-harness.test.mjs"
   },
   "devDependencies": {
     "@types/node": "22.19.0",

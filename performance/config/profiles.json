@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "hardLimits": {
+    "maxVus": 2,
+    "maxRatePerSecond": 2,
+    "maxDurationSeconds": 10,
+    "maxRequestTimeoutMilliseconds": 1000,
+    "maxRequestCount": 20
+  },
+  "profiles": {
+    "direct-mock": {
+      "enabled": true,
+      "environment": "direct-mock",
+      "label": "Direct mock-only local synthetic fixture",
+      "targetProtocol": "http:",
+      "targetHostAllowlist": ["127.0.0.1"],
+      "targetPort": "ephemeral-owned-fixture",
+      "mockBoundaries": "Harness-owned synthetic API only; no Platform WireMock, Dev application, external integrations, or customer data."
+    },
+    "dev": {
+      "enabled": false,
+      "environment": "dev",
+      "label": "Shared Platform Dev application with shared WireMock",
+      "targetProtocol": "http:",
+      "targetHostAllowlist": [],
+      "targetPort": null,
+      "mockBoundaries": "Unavailable here: no approved shared-Dev local entry point or mappings are checked into this repository.",
+      "blockedReason": "RRDAPI-10 AC2 remains blocked until this harness can consume the owned Platform Dev application and its existing shared WireMock mappings through a documented, isolated local interface."
+    }
+  },
+  "workloads": {
+    "smoke": {
+      "ratePerSecond": 1,
+      "durationSeconds": 2,
+      "vus": 1,
+      "requestTimeoutMilliseconds": 1000,
+      "maxRequests": 2
+    },
+    "baseline": {
+      "ratePerSecond": 2,
+      "durationSeconds": 10,
+      "vus": 2,
+      "requestTimeoutMilliseconds": 1000,
+      "maxRequests": 20
+    }
+  }
+}

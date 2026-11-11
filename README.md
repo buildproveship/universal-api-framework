@@ -53,6 +53,15 @@ and a named `it` assertion there, keeping all requests on the owned loopback API
 destinations and unsupported loopback/address forms receive no requests. Do not
 introduce a customer or remote target.
 
+## Local k6 performance harness (RRDAPI-10)
+
+The separately documented [performance harness](performance/README.md) runs only
+against its own ephemeral loopback fixture. Its results are direct mock-only
+checks, not a Dev application-capacity test. The Dev profile remains disabled
+until the shared Platform Dev application and WireMock can be consumed through
+an approved local interface; this repository does not create another mock
+platform or accept arbitrary target URLs.
+
 ## Scope and dependency boundary
 
 This repository currently provides TypeScript setup, readable local BDD smoke
