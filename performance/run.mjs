@@ -29,8 +29,8 @@ function parseArguments(args) {
     const option = args[index];
     const value = args[index + 1];
 
-    if (!['--profile', '--workload', '--fixture'].includes(option) || value === undefined) {
-      throw new Error('Allowed options are --profile, --workload, and --fixture with configured values only.');
+    if (!['--profile', '--workload', '--fixture', '--platform-root', '--platform-image'].includes(option) || value === undefined) {
+      throw new Error('Allowed options are --profile, --workload, --fixture, --platform-root, and --platform-image with configured values only.');
     }
 
     const key = option.slice(2);
@@ -223,16 +223,23 @@ async function main() {
     throw new Error(selectedProfile.blockedReason);
   }
 
-  if (!config.workloads[selection.workload]) {
-    throw new Error('Workload is not present in the versioned performance configuration.');
+  const isDev = selection.profile === 'dev';
+  if (isDev && (!selection['platform-root'] || !selection['platform-image'])) {
+    throw new Error('Dev requires --platform-root at the pinned revision and --platform-image with verified source labels. No runtime was started.');
   }
-
-  if (!['passing', 'failing', 'redirecting'].includes(selection.fixture)) {
-    throw new Error('Fixture mode must be "passing", "failing", or "redirecting".');
+  if (!isDev && (selection['platform-root'] || selection['platform-image'])) {
+    throw new Error('Platform settings are accepted only by the owned Dev profile.');
   }
-
-  if (selection.profile !== 'direct-mock') {
-    throw new Error('Only the harness-owned direct-mock fixture profile is currently executable.');
+  if (!config.workloads[selection.workload] || !selectedProfile.workloads.includes(selection.workload)) {
+    throw new Error('Workload is not present in the selected versioned performance profile.');
+  }
+  if (!(isDev ? ['passing', 'failing'] : ['passing', 'failing', 'redirecting']).includes(selection.fixture)) {
+    throw new Error('Fixture mode is not supported by the selected profile.');
+  }
+  const workload = config.workloads[selection.workload];
+  const totalRequests = workload.ratePerSecond * workload.durationSeconds + (isDev ? 2 : 0);
+  if (totalRequests > workload.maxRequests || totalRequests > config.hardLimits.maxRequestCount) {
+    throw new Error('Workload and authentication requests exceed the request ceiling.');
   }
 
   const k6Version = verifyK6();
@@ -240,71 +247,117 @@ async function main() {
   await mkdir(summaryDirectory, { recursive: true });
   const summaryName = `${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}.json`;
   const summaryPath = path.join(summaryDirectory, summaryName);
-  const redirectDestination =
-    selection.fixture === 'redirecting' ? makeRedirectDestination() : undefined;
-  const redirectTarget = redirectDestination
-    ? await listenOnLoopback(redirectDestination.server)
-    : undefined;
-  const fixture = makeFixture(selection.fixture, redirectTarget);
-  const baseUrl = await listenOnLoopback(fixture);
-
+  const controller = new AbortController();
+  let interrupted = false;
+  const interrupt = () => { interrupted = true; controller.abort(); };
+  process.once('SIGINT', interrupt);
+  process.once('SIGTERM', interrupt);
+  let platform;
+  let fixture;
+  let redirectDestination;
+  let summary;
+  let result;
+  let failure;
+  let cleanup;
+  let k6Started = false;
   try {
-    const result = await runK6({
+    let baseUrl;
+    if (isDev) {
+      const { startPlatformRuntime } = await import('./platform-runtime.mjs');
+      platform = await startPlatformRuntime({
+        platformRoot: selection['platform-root'],
+        image: selection['platform-image'],
+        signal: controller.signal,
+      });
+      baseUrl = platform.baseUrl.replace(/\/?$/, '/');
+    } else {
+      redirectDestination = selection.fixture === 'redirecting' ? makeRedirectDestination() : undefined;
+      const redirectTarget = redirectDestination ? await listenOnLoopback(redirectDestination.server) : undefined;
+      fixture = makeFixture(selection.fixture, redirectTarget);
+      baseUrl = await listenOnLoopback(fixture);
+    }
+    if (controller.signal.aborted) throw new Error('Owned runtime startup was cancelled.');
+    k6Started = true;
+    result = await runK6({
       PERF_TARGET: baseUrl,
       PERF_OWNED_PORT: new URL(baseUrl).port,
+      PERF_PROFILE: selection.profile,
+      PERF_EXPECT_FAILURE: String(isDev && selection.fixture === 'failing'),
       PERF_WORKLOAD: selection.workload,
       PERF_REVISION: revision.revision,
       PERF_WORKTREE_DIRTY: String(revision.dirty),
       PERF_K6_VERSION: k6Version,
       PERF_SUMMARY_PATH: summaryPath,
     });
-
     if (redirectDestination && redirectDestination.requestCount !== 0) {
       throw new Error('The local redirect destination received traffic; refusing the run result.');
     }
-
-    let summary;
-
     try {
       summary = JSON.parse(await readFile(summaryPath, 'utf8'));
     } catch {
-      const diagnostic = result.diagnostics
-        .split(/\r?\n/)
-        .filter(Boolean)
-        .slice(-3)
-        .join(' ')
-        .replace(/https?:\/\/\S+/g, '[loopback target]')
-        .slice(0, 360);
-      throw new Error(
-        `k6 exited with code ${result.code}; no sanitized summary was produced.` +
-          (diagnostic ? ` ${diagnostic}` : ''),
-      );
+      // Child diagnostics may contain runtime data. Never persist or echo them.
+      throw new Error(`k6 exited with code ${result.code}; no sanitized summary was produced.`);
     }
-
-    const outcome = result.interrupted ? 'cancelled' : result.code === 0 ? 'passed' : 'failed';
-    summary.runStatus = outcome;
-    summary.runExitCode = result.code;
-    await writeFile(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
-
-    console.log(
-      `Direct mock-only ${selection.workload} ${outcome} with ${summary.metrics.requestCount} requests; ` +
-        `summary: ${path.relative(projectRoot, summaryPath)}`,
-    );
-
-    if (result.interrupted) {
-      process.exitCode = 130;
-    } else {
-      process.exitCode = result.code;
+    if (platform && !interrupted) {
+      summary.platform = await platform.evidence();
+      if (!(summary.platform.matchedLoginRequests > 0) || summary.platform.unmatchedRequests !== 0 || !summary.platform.noDefaultRoute) {
+        throw new Error('Actual Platform/WireMock login or isolation evidence is incomplete.');
+      }
     }
+  } catch (error) {
+    failure = error;
+    if (error?.settlement) cleanup = error.settlement;
   } finally {
-    await Promise.all([
-      closeServer(fixture),
-      redirectDestination ? closeServer(redirectDestination.server) : Promise.resolve(),
-    ]);
+    try {
+      if (platform) {
+        cleanup = await platform.close();
+        if (!cleanup?.settled || !cleanup?.gracefulStopVerified) {
+          throw new Error('Owned Platform runtime cleanup did not prove graceful settlement.');
+        }
+      }
+      await Promise.all([
+        fixture?.listening ? closeServer(fixture) : Promise.resolve(),
+        redirectDestination?.server.listening ? closeServer(redirectDestination.server) : Promise.resolve(),
+      ]);
+    } catch (error) {
+      if (error?.settlement) cleanup = error.settlement;
+      failure ??= error;
+    }
+    process.removeListener('SIGINT', interrupt);
+    process.removeListener('SIGTERM', interrupt);
   }
+  const exitCode = interrupted || result?.interrupted ? 130 : failure ? 1 : result?.code ?? 1;
+  const outcome = exitCode === 130 ? 'cancelled' : exitCode === 0 ? 'passed' : 'failed';
+  if (!summary) {
+    summary = {
+      schemaVersion: 1,
+      codeRevision: revision.revision,
+      workingTreeDirty: revision.dirty,
+      k6Version,
+      environment: selectedProfile.environment,
+      profile: selection.profile,
+      workload: selection.workload,
+      mockBoundaries: selectedProfile.mockBoundaries,
+      phase: k6Started ? 'execution' : 'startup',
+      metrics: { requestCount: k6Started ? null : 0 },
+      failureCode: interrupted ? 'cancelled' : 'runtime_or_summary_unavailable',
+    };
+  }
+  {
+    summary.runStatus = outcome;
+    summary.runExitCode = exitCode;
+    if (isDev) summary.cleanup = cleanup ?? { complete: false };
+    await writeFile(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
+    console.log(
+      `${isDev ? 'Owned Platform Dev' : 'Direct mock-only'} ${selection.workload} ${outcome} with ${summary.metrics.requestCount ?? 'unknown'} requests; ` +
+      `summary: ${path.relative(projectRoot, summaryPath)}`,
+    );
+  }
+  process.exitCode = exitCode;
+  if (failure) throw failure;
 }
 
 main().catch((error) => {
   console.error(error instanceof Error ? error.message : 'Local performance harness failed.');
-  process.exitCode = 1;
+  process.exitCode ||= 1;
 });

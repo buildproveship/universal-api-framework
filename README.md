@@ -55,12 +55,12 @@ introduce a customer or remote target.
 
 ## Local k6 performance harness (RRDAPI-10)
 
-The separately documented [performance harness](performance/README.md) runs only
-against its own ephemeral loopback fixture. Its results are direct mock-only
-checks, not a Dev application-capacity test. The Dev profile remains disabled
-until the shared Platform Dev application and WireMock can be consumed through
-an approved local interface; this repository does not create another mock
-platform or accept arbitrary target URLs.
+The separately documented [performance harness](performance/README.md) provides
+an owned direct-mock fixture and an isolated Dev profile for the real pinned
+Platform application with actual WireMock and its existing mappings. The Dev
+profile requires an exact-source prepared image and creates its own temporary
+runtime on a random loopback port. Neither profile accepts arbitrary target URLs;
+mocked Dev results do not prove UAT or Production capacity.
 
 ## Scope and dependency boundary
 

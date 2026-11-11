@@ -13,19 +13,30 @@
       "environment": "direct-mock",
       "label": "Direct mock-only local synthetic fixture",
       "targetProtocol": "http:",
-      "targetHostAllowlist": ["127.0.0.1"],
+      "targetHostAllowlist": [
+        "127.0.0.1"
+      ],
       "targetPort": "ephemeral-owned-fixture",
-      "mockBoundaries": "Harness-owned synthetic API only; no Platform WireMock, Dev application, external integrations, or customer data."
+      "mockBoundaries": "Harness-owned synthetic API only; no Platform WireMock, Dev application, external integrations, or customer data.",
+      "workloads": [
+        "smoke",
+        "baseline"
+      ]
     },
     "dev": {
-      "enabled": false,
+      "enabled": true,
       "environment": "dev",
-      "label": "Shared Platform Dev application with shared WireMock",
+      "label": "Owned Platform Dev application with actual shared WireMock mappings",
       "targetProtocol": "http:",
-      "targetHostAllowlist": [],
-      "targetPort": null,
-      "mockBoundaries": "Unavailable here: no approved shared-Dev local entry point or mappings are checked into this repository.",
-      "blockedReason": "RRDAPI-10 AC2 remains blocked until this harness can consume the owned Platform Dev application and its existing shared WireMock mappings through a documented, isolated local interface."
+      "targetHostAllowlist": [
+        "127.0.0.1"
+      ],
+      "targetPort": "ephemeral-owned-platform",
+      "workloads": [
+        "dev-smoke",
+        "dev-baseline"
+      ],
+      "mockBoundaries": "Real pinned Platform API with actual pinned WireMock and unchanged shared mappings; isolated disposable synthetic stores and internal application network. No live providers or customer data. Dev results do not prove UAT or Production capacity."
     }
   },
   "workloads": {
@@ -39,6 +50,20 @@
     "baseline": {
       "ratePerSecond": 2,
       "durationSeconds": 10,
+      "vus": 2,
+      "requestTimeoutMilliseconds": 1000,
+      "maxRequests": 20
+    },
+    "dev-smoke": {
+      "ratePerSecond": 1,
+      "durationSeconds": 2,
+      "vus": 1,
+      "requestTimeoutMilliseconds": 1000,
+      "maxRequests": 4
+    },
+    "dev-baseline": {
+      "ratePerSecond": 2,
+      "durationSeconds": 9,
       "vus": 2,
       "requestTimeoutMilliseconds": 1000,
       "maxRequests": 20

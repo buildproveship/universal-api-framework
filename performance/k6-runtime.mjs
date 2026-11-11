@@ -9,6 +9,7 @@ export function createK6Invocation(environment, workloadPath, configPath) {
   const allowed = new Set([
     'PERF_TARGET', 'PERF_OWNED_PORT', 'PERF_WORKLOAD', 'PERF_REVISION',
     'PERF_WORKTREE_DIRTY', 'PERF_K6_VERSION', 'PERF_SUMMARY_PATH',
+    'PERF_PROFILE', 'PERF_EXPECT_FAILURE',
   ]);
   const environmentArguments = Object.entries(environment).flatMap(([key, value]) => {
     if (!allowed.has(key)) throw new Error('Unsupported internal k6 runtime setting.');

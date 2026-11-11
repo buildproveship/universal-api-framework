@@ -116,7 +116,7 @@ describe('RRDAPI-10 child-process isolation', { timeout: 45_000 }, () => {
         path.join(root, 'performance', 'workload.js')],
         { cwd: root, env: {}, encoding: 'utf8', timeout: 5000 });
       assert.notEqual(rejected.status, 0);
-      assert.match(rejected.stderr, /not an approved ephemeral loopback fixture/);
+      assert.match(rejected.stderr, /not an approved owned loopback runtime/);
     }
     assert.equal(requests, 0, 'Missing or mismatched ownership must fail before traffic');
   });

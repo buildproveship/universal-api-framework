@@ -16,8 +16,10 @@
     "perf:smoke": "node performance/run.mjs --profile direct-mock --workload smoke --fixture passing",
     "perf:fixture-fail": "node performance/run.mjs --profile direct-mock --workload smoke --fixture failing",
     "perf:baseline": "node performance/run.mjs --profile direct-mock --workload baseline --fixture passing",
-    "perf:dev": "node performance/run.mjs --profile dev --workload smoke",
-    "test:performance": "node --test --test-concurrency=1 --test-reporter=spec tests/performance-*.test.mjs"
+    "perf:dev": "node performance/run.mjs --profile dev --workload dev-smoke",
+    "test:performance": "node --test --test-concurrency=1 --test-reporter=spec tests/performance-*.test.mjs tests/platform-runtime.test.mjs",
+    "perf:dev:fixture-fail": "node performance/run.mjs --profile dev --workload dev-smoke --fixture failing",
+    "perf:dev:baseline": "node performance/run.mjs --profile dev --workload dev-baseline"
   },
   "devDependencies": {
     "@types/node": "22.19.0",

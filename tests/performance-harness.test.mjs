@@ -23,20 +23,20 @@ function getSummaryPath(output) {
 }
 
 describe('RRDAPI-10 local performance harness', { timeout: 30_000 }, () => {
-  it('rejects Dev and arbitrary-target selections before k6 or fixture startup', async () => {
+  it('rejects unprepared Dev and arbitrary-target selections before runtime startup', async () => {
     const config = JSON.parse(await readFile(configPath, 'utf8'));
     const dev = run(['--profile', 'dev', '--workload', 'smoke']);
     const override = run(['--profile', 'direct-mock', '--target', 'https://production.example']);
     const production = run(['--profile', 'production', '--workload', 'smoke']);
 
-    assert.equal(config.profiles.dev.enabled, false);
+    assert.equal(config.profiles.dev.enabled, true);
     assert.deepEqual(config.profiles['direct-mock'].targetHostAllowlist, ['127.0.0.1']);
     assert.equal(config.workloads.baseline.vus, config.hardLimits.maxVus);
     assert.equal(config.workloads.baseline.ratePerSecond, config.hardLimits.maxRatePerSecond);
     assert.equal(config.workloads.baseline.durationSeconds, config.hardLimits.maxDurationSeconds);
     assert.equal(config.workloads.baseline.maxRequests, config.hardLimits.maxRequestCount);
     assert.notEqual(dev.status, 0);
-    assert.match(dev.stderr, /AC2 remains blocked/);
+    assert.match(dev.stderr, /Dev requires --platform-root/);
     assert.notEqual(override.status, 0);
     assert.match(override.stderr, /Allowed options/);
     assert.equal(override.stdout, '');
