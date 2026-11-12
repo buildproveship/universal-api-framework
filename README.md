@@ -56,15 +56,43 @@ introduce a customer or remote target.
 ## Scope and dependency boundary
 
 This repository currently provides TypeScript setup, readable local BDD smoke
-checks, request-boundary loopback target safety, meaningful positive/negative
-assertions, and setup documentation only.
+checks, request-boundary loopback target safety, inactive settings admission,
+meaningful positive/negative assertions, and setup documentation only.
 RRDAPI-8 remains post-MVP; **the full ticket is not complete** and still depends on
 [RRDSCRUM-53](https://noisegatemusicstudios.atlassian.net/browse/RRDSCRUM-53).
 
-Shared execution contracts, the dependent execution engine, integrations,
-customer execution, credentials, provisioning, cloud setup, paid services and
-automatic hosted CI are deliberately excluded. Nothing here freezes or modifies
-those future interfaces or advances the Jira ticket.
+Shared execution contracts, the dependent execution engine, service integrations,
+customer execution, credential storage/provisioning, cloud setup, paid services
+and automatic hosted CI are deliberately excluded. Nothing here freezes or
+modifies those future interfaces or advances the Jira ticket.
+
+## Inactive local settings admission (RRDAPI-2)
+
+`src/settings-admission.ts` validates an explicit customer-controlled local
+execution policy and creates a copied, deeply frozen settings snapshot. The
+policy is the separate authority for settings admission; it binds one exact
+scenario ID. TCM review states,
+TCM data-requirements previews, and TDM receipts are observations, not grants.
+The settings and policy must match exact scope, environment revision/origin,
+actions, opaque credential references, and caller-supplied numeric limits.
+There are no product limit defaults. Production and destructive actions are
+rejected.
+
+The admitted target remains restricted to the existing HTTP IPv4 loopback
+boundary. Admission, revalidation, and credential-provider tests make no target
+requests. Callers must supply the current trusted local policy to revalidate
+before each operation; the immutable snapshot alone cannot detect an external
+policy change. Credentials are resolved only through a customer-supplied scoped
+provider at runtime, and their values are passed only into the supplied callback,
+never returned in the resolution result.
+
+TCM case/plan and TDM recipe/schema/data paths are not admitted: the owning
+services' applicable freshness/authority checks are not wired into this
+scaffold, so required managed references fail closed as unavailable. The code
+does not invent owner endpoints, submit protected data, contact customer targets,
+produce payload evidence, or perform cleanup. Synthetic local validation is the
+only approved use of this slice; customer/hosted execution and full RRDAPI-2/8
+acceptance remain out of scope.
 
 ## Inactive OpenAPI intake preflight (RRDAPI-14)
 
