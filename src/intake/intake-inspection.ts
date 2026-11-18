@@ -4,22 +4,41 @@ import { reject, type PreflightPolicy, type IntakeResult } from './preflight.js'
 /** Versions the document-schema stage is tested against; narrower than preflight. */
 const SCHEMA_VALIDATED_VERSIONS: readonly string[] = ['3.0.0', '3.0.1', '3.0.2', '3.0.3', '3.0.4'];
 // URI scope and dynamic/anchor resolution are outside this preflight.
-const UNSUPPORTED_SCOPE_KEYS: readonly string[] = ['$id', '$anchor', '$dynamicAnchor', '$dynamicRef', '$recursiveRef', '$recursiveAnchor'];
+const UNSUPPORTED_SCOPE_KEYS: readonly string[] = [
+  '$id',
+  '$anchor',
+  '$dynamicAnchor',
+  '$dynamicRef',
+  '$recursiveRef',
+  '$recursiveAnchor',
+];
 
 export interface IntakeInput {
-  source: string; format: 'json' | 'yaml'; policy: PreflightPolicy; mode: 'preflight' | 'schema';
+  source: string;
+  format: 'json' | 'yaml';
+  policy: PreflightPolicy;
+  mode: 'preflight' | 'schema';
 }
 
 export async function inspectInput({ source, format, policy, mode }: IntakeInput): Promise<IntakeResult> {
   // JSON must actually be JSON, not YAML's more permissive syntax.
   if (format === 'json') {
-    try { JSON.parse(source); } catch { return reject('syntax-invalid'); }
+    try {
+      JSON.parse(source);
+    } catch {
+      return reject('syntax-invalid');
+    }
   }
   const doc = parseDocument(source, {
-    version: '1.2', schema: 'core', strict: true, uniqueKeys: true,
+    version: '1.2',
+    schema: 'core',
+    strict: true,
+    uniqueKeys: true,
     // parseDocument does not log diagnostics. 'silent' would suppress its
     // MULTIPLE_DOCS error, so retain errors and expose only codes/offsets.
-    prettyErrors: false, logLevel: 'error', customTags: [],
+    prettyErrors: false,
+    logLevel: 'error',
+    customTags: [],
   });
   const error = doc.errors[0];
   if (error) return reject('syntax-invalid', error.pos[0]);
@@ -37,7 +56,8 @@ export async function inspectInput({ source, format, policy, mode }: IntakeInput
     if (++nodes > policy.maxNodes) return reject('nodes-exceeded', offset);
     if (depth > policy.maxDepth) return reject('depth-exceeded', offset);
     if (isAlias(node) || node.tag || ('anchor' in node && node.anchor)) return reject('unsupported-yaml', offset);
-    if (isScalar(node) && typeof node.value === 'number' && !Number.isFinite(node.value)) return reject('unsupported-yaml', offset);
+    if (isScalar(node) && typeof node.value === 'number' && !Number.isFinite(node.value))
+      return reject('unsupported-yaml', offset);
     if (isMap(node)) {
       for (const pair of node.items) {
         if (!isScalar(pair.key) || typeof pair.key.value !== 'string') return reject('unsupported-yaml', offset);
@@ -59,7 +79,11 @@ export async function inspectInput({ source, format, policy, mode }: IntakeInput
           }
           // Only syntactic local JSON Pointer references; resolution remains a later gate.
           let decoded: string;
-          try { decoded = decodeURIComponent(value); } catch { return reject('reference-unsupported', pair.key.range?.[0]); }
+          try {
+            decoded = decodeURIComponent(value);
+          } catch {
+            return reject('reference-unsupported', pair.key.range?.[0]);
+          }
           if (/~(?![01])/.test(decoded)) return reject('reference-unsupported', pair.key.range?.[0]);
         }
         pending.push({ node: pair.key, depth: depth + 1 }, { node: pair.value, depth: depth + 1 });
@@ -69,7 +93,8 @@ export async function inspectInput({ source, format, policy, mode }: IntakeInput
     }
   }
   const version = doc.contents.get('openapi');
-  if (typeof version !== 'string' || !policy.allowedOpenApiVersions.includes(version)) return reject('version-not-allowed');
+  if (typeof version !== 'string' || !policy.allowedOpenApiVersions.includes(version))
+    return reject('version-not-allowed');
   if (mode === 'schema') {
     // This stage has a deliberately narrower technical capability than preflight.
     if (!SCHEMA_VALIDATED_VERSIONS.includes(version)) {

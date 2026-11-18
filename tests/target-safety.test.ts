@@ -36,10 +36,7 @@ describe('Given a client configured for one owned loopback fixture', { timeout: 
   it('When another local fixture origin is requested, then it is rejected before receiving a request', () => {
     const requestCountBefore = unconfiguredFixture?.requestCount;
 
-    assert.throws(
-      () => client.request(`${unconfiguredFixture?.origin}/health`),
-      /not the configured loopback fixture/,
-    );
+    assert.throws(() => client.request(`${unconfiguredFixture?.origin}/health`), /not the configured loopback fixture/);
 
     assert.equal(unconfiguredFixture?.requestCount, requestCountBefore);
     assert.equal(unconfiguredFixture?.requestCount, 0);
@@ -67,11 +64,7 @@ describe('Given a client configured for one owned loopback fixture', { timeout: 
     const fixtureRequestCountBefore = fixture?.requestCount;
 
     for (const destination of rejectedDestinations) {
-      assert.throws(
-        () => client.request(destination),
-        /not the configured loopback fixture/,
-        destination,
-      );
+      assert.throws(() => client.request(destination), /not the configured loopback fixture/, destination);
     }
 
     assert.equal(fixture?.requestCount, fixtureRequestCountBefore);

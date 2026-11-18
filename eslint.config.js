@@ -25,9 +25,14 @@ export default defineConfig(
       // `||` on strings deliberately treats an empty value (e.g. an unset env var) as missing.
       '@typescript-eslint/prefer-nullish-coalescing': ['error', { ignorePrimitives: { string: true } }],
       // node:test registers describe/it/test synchronously; their promises are tracked by the runner.
-      '@typescript-eslint/no-floating-promises': ['error', {
-        allowForKnownSafeCalls: [{ from: 'package', package: 'node:test', name: ['describe', 'it', 'test', 'suite'] }],
-      }],
+      '@typescript-eslint/no-floating-promises': [
+        'error',
+        {
+          allowForKnownSafeCalls: [
+            { from: 'package', package: 'node:test', name: ['describe', 'it', 'test', 'suite'] },
+          ],
+        },
+      ],
     },
   },
   {

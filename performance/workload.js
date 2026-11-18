@@ -118,42 +118,51 @@ function requestOptions(route, token) {
  * @returns {unknown} untrusted JSON, checked field by field by the caller
  */
 function jsonBody(response) {
-  try { return response.json(); } catch { return null; }
+  try {
+    return response.json();
+  } catch {
+    return null;
+  }
 }
 
 export function setup() {
   if (!isDev) return {};
-  const response = http.post(`${targetOrigin}/api/dev/login`,
-    JSON.stringify({ user: 'developer-a' }), requestOptions('POST /api/dev/login'));
+  const response = http.post(
+    `${targetOrigin}/api/dev/login`,
+    JSON.stringify({ user: 'developer-a' }),
+    requestOptions('POST /api/dev/login'),
+  );
   const body = /** @type {LoginBody | null} */ (jsonBody(response));
   const token = typeof body?.token === 'string' ? body.token : undefined;
   const valid = check(response, {
     'owned Dev mocked login succeeds': (res) => res.status === 200,
     'owned Dev session has the synthetic contract': () =>
-      token !== undefined && /^rrdev_[0-9a-f]{64}$/.test(token) &&
-      Number.isFinite(body?.expires),
+      token !== undefined && /^rrdev_[0-9a-f]{64}$/.test(token) && Number.isFinite(body?.expires),
   });
-  if (!valid || token === undefined) throw new Error('Owned Dev mocked login failed; no application workload was sent.');
+  if (!valid || token === undefined)
+    throw new Error('Owned Dev mocked login failed; no application workload was sent.');
   return { token };
 }
 
 /** @param {Session | undefined} session */
 export default function (session) {
-  const route = isDev
-    ? `/projects/${projectId}/environments/${environmentId}/configuration`
-    : '/widgets/widget-1';
-  const response = http.get(`${targetOrigin}${route}`,
-    requestOptions(isDev ? 'GET owned project configuration' : 'GET /widgets/widget-1', session?.token));
+  const route = isDev ? `/projects/${projectId}/environments/${environmentId}/configuration` : '/widgets/widget-1';
+  const response = http.get(
+    `${targetOrigin}${route}`,
+    requestOptions(isDev ? 'GET owned project configuration' : 'GET /widgets/widget-1', session?.token),
+  );
   applicationRequests.add(1);
   const body = /** @type {ApplicationBody | null} */ (jsonBody(response));
   const results = check(response, {
     'application response is HTTP 200': (res) => res.status === 200,
     'application response is JSON': (res) => (res.headers['Content-Type'] || '').startsWith('application/json'),
-    'application business identity is correct': () => isDev
-      ? body?.application?.id === (__ENV.PERF_EXPECT_FAILURE === 'true' ? 'deliberately-wrong-project' : projectId) &&
-        body.application.tenantId === tenantId && body.environment?.id === environmentId &&
-        body.environment.applicationId === projectId
-      : body?.id === 'widget-1' && body.active === true && body.version === expectedVersion,
+    'application business identity is correct': () =>
+      isDev
+        ? body?.application?.id === (__ENV.PERF_EXPECT_FAILURE === 'true' ? 'deliberately-wrong-project' : projectId) &&
+          body.application.tenantId === tenantId &&
+          body.environment?.id === environmentId &&
+          body.environment.applicationId === projectId
+        : body?.id === 'widget-1' && body.active === true && body.version === expectedVersion,
   });
   if (results) completedChecks.add(1);
 }
@@ -161,8 +170,11 @@ export default function (session) {
 /** @param {Session | undefined} session */
 export function teardown(session) {
   if (!isDev || !session?.token) return;
-  const response = http.post(`${targetOrigin}/api/dev/logout`, null,
-    requestOptions('POST /api/dev/logout', session.token));
+  const response = http.post(
+    `${targetOrigin}/api/dev/logout`,
+    null,
+    requestOptions('POST /api/dev/logout', session.token),
+  );
   check(response, { 'owned Dev session is revoked': (res) => res.status === 204 });
 }
 

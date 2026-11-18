@@ -45,17 +45,9 @@ function run(command: string, args: string[]): string {
 async function download(url: string): Promise<Buffer> {
   const response = await fetch(url);
   const finalUrl = new URL(response.url);
-  const allowedHosts = new Set([
-    'github.com',
-    'objects.githubusercontent.com',
-    'release-assets.githubusercontent.com',
-  ]);
+  const allowedHosts = new Set(['github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com']);
 
-  if (
-    !response.ok ||
-    finalUrl.protocol !== 'https:' ||
-    !allowedHosts.has(finalUrl.hostname)
-  ) {
+  if (!response.ok || finalUrl.protocol !== 'https:' || !allowedHosts.has(finalUrl.hostname)) {
     throw new Error('Could not download the pinned k6 release from an approved GitHub host.');
   }
 
@@ -91,9 +83,7 @@ async function main() {
     let executableBytes;
 
     if (asset.archive === 'zip') {
-      const entries = run('unzip', ['-Z1', archivePath])
-        .split(/\r?\n/)
-        .filter(Boolean);
+      const entries = run('unzip', ['-Z1', archivePath]).split(/\r?\n/).filter(Boolean);
       const executableEntry = entries.find((entry) => entry === 'k6' || /^[^/]+\/k6$/.test(entry));
 
       if (!executableEntry) {

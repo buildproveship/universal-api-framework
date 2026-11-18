@@ -5,7 +5,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-  absoluteLimits, hardLimitsWithinCeilings, lifecycleRequestCount, workloadWithinLimits,
+  absoluteLimits,
+  hardLimitsWithinCeilings,
+  lifecycleRequestCount,
+  workloadWithinLimits,
   type HardLimits,
 } from '../../performance/limits.js';
 import { readProfiles } from './support.ts';
@@ -19,7 +22,15 @@ describe('Shared performance safety ceilings', () => {
     assert.equal(hardLimitsWithinCeilings(profiles.hardLimits), true);
     for (const [name, profile] of Object.entries(profiles.profiles)) {
       for (const selected of profile.workloads) {
-        assert.equal(workloadWithinLimits(profiles.workloads[selected as keyof typeof profiles.workloads], profiles.hardLimits, lifecycleRequestCount(name)), true, selected);
+        assert.equal(
+          workloadWithinLimits(
+            profiles.workloads[selected as keyof typeof profiles.workloads],
+            profiles.hardLimits,
+            lifecycleRequestCount(name),
+          ),
+          true,
+          selected,
+        );
       }
     }
   });
@@ -36,13 +47,28 @@ describe('Shared performance safety ceilings', () => {
   it('Given a workload over any configured limit, then it is refused', () => {
     assert.equal(workloadWithinLimits(workload, limits), true);
     for (const override of [
-      { vus: 3 }, { ratePerSecond: 3 }, { durationSeconds: 11 }, { requestTimeoutMilliseconds: 1001 },
-      { maxRequests: 21 }, { vus: 0 }, { maxRequests: 1.5 }, { ratePerSecond: undefined },
+      { vus: 3 },
+      { ratePerSecond: 3 },
+      { durationSeconds: 11 },
+      { requestTimeoutMilliseconds: 1001 },
+      { maxRequests: 21 },
+      { vus: 0 },
+      { maxRequests: 1.5 },
+      { ratePerSecond: undefined },
     ]) {
       assert.equal(workloadWithinLimits({ ...workload, ...override }, limits), false, JSON.stringify(override));
     }
-    assert.equal(workloadWithinLimits({ ...workload, ratePerSecond: 2, durationSeconds: 10, maxRequests: 20 }, limits), true);
-    assert.equal(workloadWithinLimits({ ...workload, ratePerSecond: 2, durationSeconds: 10, maxRequests: 20 }, { ...limits, maxRequestCount: 19 }), false);
+    assert.equal(
+      workloadWithinLimits({ ...workload, ratePerSecond: 2, durationSeconds: 10, maxRequests: 20 }, limits),
+      true,
+    );
+    assert.equal(
+      workloadWithinLimits(
+        { ...workload, ratePerSecond: 2, durationSeconds: 10, maxRequests: 20 },
+        { ...limits, maxRequestCount: 19 },
+      ),
+      false,
+    );
     assert.equal(workloadWithinLimits(undefined, limits), false);
   });
 

@@ -1,13 +1,26 @@
 // Sanitized cleanup evidence for the owned Dev Platform runtime. Kept apart from
 // platform-runtime.ts so the runner can read it without loading Docker code.
 
-export interface CleanupFailure { operation: string; reason: string }
-export interface RemainingResource { kind: string; id: string | undefined }
+export interface CleanupFailure {
+  operation: string;
+  reason: string;
+}
+export interface RemainingResource {
+  kind: string;
+  id: string | undefined;
+}
 export interface Settlement {
-  settled: boolean; gracefulStopVerified: boolean; project: string | undefined;
-  owner?: string | undefined; cleanupFailures?: CleanupFailure[]; cleanupFailureCount?: number;
-  remainingOwnedResources: RemainingResource[]; remainingResourcesMayBeStale?: boolean;
-  remainingResourcesKnown?: boolean; creationOutcomeUncertain: boolean; stableEmptyObservations?: number;
+  settled: boolean;
+  gracefulStopVerified: boolean;
+  project: string | undefined;
+  owner?: string | undefined;
+  cleanupFailures?: CleanupFailure[];
+  cleanupFailureCount?: number;
+  remainingOwnedResources: RemainingResource[];
+  remainingResourcesMayBeStale?: boolean;
+  remainingResourcesKnown?: boolean;
+  creationOutcomeUncertain: boolean;
+  stableEmptyObservations?: number;
 }
 
 /** An error that carries sanitized cleanup evidence for the run summary. */

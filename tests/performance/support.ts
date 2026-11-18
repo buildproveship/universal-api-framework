@@ -24,11 +24,20 @@ export function readProfiles(): ProfilesConfig {
 }
 
 export interface RunSummaryFile {
-  environment: string; profile: string; workload: string; k6Version: string;
-  phase?: string; runStatus: string; runExitCode: number;
+  environment: string;
+  profile: string;
+  workload: string;
+  k6Version: string;
+  phase?: string;
+  runStatus: string;
+  runExitCode: number;
   metrics: {
-    requestCount: number | null; checksFailed: number; checkPassRate: number; errorRate: number;
-    throughputRequestsPerSecond: number; latencyMilliseconds: Record<string, number>;
+    requestCount: number | null;
+    checksFailed: number;
+    checkPassRate: number;
+    errorRate: number;
+    throughputRequestsPerSecond: number;
+    latencyMilliseconds: Record<string, number>;
   };
 }
 

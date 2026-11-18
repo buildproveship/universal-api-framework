@@ -13,29 +13,19 @@
       "environment": "direct-mock",
       "label": "Direct mock-only local synthetic fixture",
       "targetProtocol": "http:",
-      "targetHostAllowlist": [
-        "127.0.0.1"
-      ],
+      "targetHostAllowlist": ["127.0.0.1"],
       "targetPort": "ephemeral-owned-fixture",
       "mockBoundaries": "Harness-owned synthetic API only; no Platform WireMock, Dev application, external integrations, or customer data.",
-      "workloads": [
-        "smoke",
-        "baseline"
-      ]
+      "workloads": ["smoke", "baseline"]
     },
     "dev": {
       "enabled": true,
       "environment": "dev",
       "label": "Owned Platform Dev application with actual shared WireMock mappings",
       "targetProtocol": "http:",
-      "targetHostAllowlist": [
-        "127.0.0.1"
-      ],
+      "targetHostAllowlist": ["127.0.0.1"],
       "targetPort": "ephemeral-owned-platform",
-      "workloads": [
-        "dev-smoke",
-        "dev-baseline"
-      ],
+      "workloads": ["dev-smoke", "dev-baseline"],
       "mockBoundaries": "Real pinned Platform API with actual pinned WireMock and unchanged shared mappings; isolated disposable synthetic stores and internal application network. No live providers or customer data. Dev results do not prove UAT or Production capacity."
     }
   },
