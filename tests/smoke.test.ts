@@ -1,3 +1,7 @@
+// Test classification: integration
+// Review status: Not Reviewed
+// Evidence: synthetic
+// Scope: Given/When/Then smoke requests through the guarded fetch client to the in-process synthetic loopback API; no remote or customer target.
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { startSyntheticApi } from './fixtures/synthetic-api.js';

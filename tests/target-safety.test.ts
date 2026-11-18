@@ -1,3 +1,7 @@
+// Test classification: integration
+// Review status: Not Reviewed
+// Evidence: synthetic
+// Scope: the loopback-only client guard rejects other origins, redirects and address forms before any request; it does not test real network egress controls.
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { startSyntheticApi } from './fixtures/synthetic-api.js';

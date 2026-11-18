@@ -1,3 +1,7 @@
+// Test classification: integration
+// Review status: Not Reviewed
+// Evidence: synthetic
+// Scope: child-process probe for document-schema resource floors and heap exhaustion, run only from document-schema.test.ts.
 import { validateDocumentSchema, type PreflightPolicy } from '../../src/intake/preflight.js';
 
 const policy: PreflightPolicy = {

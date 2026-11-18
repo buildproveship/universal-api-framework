@@ -1,3 +1,7 @@
+// Test classification: integration
+// Review status: Not Reviewed
+// Evidence: synthetic
+// Scope: test-only synthetic HTTP API on IPv4 loopback used by the smoke, target-safety and intake suites.
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 

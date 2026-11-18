@@ -1,3 +1,7 @@
+// Test classification: unit
+// Review status: Not Reviewed
+// Evidence: synthetic
+// Scope: Dev Platform runtime guards and cleanup logic with fake Docker calls; it does not run Docker or the Platform.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assertImageId, assertLocalContext, assertOwned, validateModel, makeOverlay, runtimeConfig } from '../performance/platform-runtime.mjs';

@@ -1,3 +1,7 @@
+// Test classification: integration
+// Review status: Not Reviewed
+// Evidence: synthetic
+// Scope: offline OpenAPI 3.0 document-schema validation through validateDocumentSchema() and inspectInput() with the pinned libraries and synthetic documents; it does not prove full specification conformance.
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import fs from 'node:fs';

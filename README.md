@@ -6,22 +6,24 @@ This is not a customer API runner or evidence of customer API behavior.
 
 ## Setup and run
 
-Install Node.js 22.12 or later (with npm), then run from the repository root:
+Install the Node.js version that `package.json` `engines` requires (with npm),
+then run from the repository root:
 
 ```sh
 npm ci
 npm run typecheck
-npm run test:smoke
+npm test
 ```
 
 Dependency installation needs access to the npm registry. After installation,
 type checking and smoke execution need no remote service, credentials, environment
-variables, account, Docker, or cloud infrastructure. No hosted CI is configured.
+variables, account, Docker, or cloud infrastructure. The only GitHub workflow is a
+manually started code-quality scan; nothing runs automatically on a pull request.
 
-`npm test` is equivalent to `npm run test:smoke`. It compiles the TypeScript and
-runs Node's built-in BDD test runner with readable Given/When/Then scenario names.
-`npm run build` only compiles. Generated JavaScript lives in the ignored `dist/`
-directory; the smoke command runs the compiled test files.
+`npm test` compiles the TypeScript and runs Node's built-in BDD test runner with
+readable Given/When/Then scenario names. `npm run build` only compiles. Generated
+JavaScript lives in the ignored `dist/` directory; `npm test` runs the compiled
+test files.
 
 ## What the smoke tests prove
 
@@ -167,14 +169,14 @@ version policy. Other versions, including 3.1 even when explicitly allowed by th
 caller, return `schema-version-unsupported`. Swagger Parser 13 alone accepts some
 invalid 3.1 Schema Objects; this implementation makes no 3.1 validation claim.
 
-Pinned `@apidevtools/openapi-schemas` 2.1.0 and `ajv-draft-04` 1.0.0 validate
-the original and resolved in-memory document against the maintained OpenAPI 3.0
+The exact-pinned `@apidevtools/openapi-schemas` and `ajv-draft-04` (versions in
+`package.json`) validate the original and resolved in-memory document against the maintained OpenAPI 3.0
 schema. Original validation checks reference placement before transformation.
 Local pointers must traverse exact own properties under RFC 6901, including
 escaped tokens and canonical array indices; inherited properties and joined
-missing tokens cannot resolve. Pinned `@apidevtools/swagger-parser` 13.0.0
-performs dereferencing with the restrictions below. Its minimum
-supported Node version requires the package engine floor of 22.12.0. External
+missing tokens cannot resolve. The exact-pinned `@apidevtools/swagger-parser`
+performs dereferencing with the restrictions below. Its minimum supported Node
+version sets the package `engines` floor. External
 references are rejected by preflight **before validator invocation**; file/HTTP
 resolvers and secondary JSON/YAML/text/binary input parsers are additionally disabled.
 Circular references return `circular-reference-unsupported` in this bounded stage, including
