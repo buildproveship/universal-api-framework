@@ -3,20 +3,22 @@
 // Evidence: synthetic
 // Scope: k6 child-process isolation from parent environment, configuration and outputs; it does not start the Dev Platform runtime.
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it, type TestContext } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createK6Invocation, isolatedK6Environment } from '../performance/k6-runtime.mjs';
+import type { AddressInfo } from 'node:net';
+import { createK6Invocation, isolatedK6Environment } from '../../performance/k6-runtime.ts';
+import { closeServer } from '../../performance/loopback.ts';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const runner = path.join(root, 'performance', 'run.mjs');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const runner = path.join(root, 'performance', 'run.ts');
 const k6 = path.join(root, '.tools', 'k6', 'k6');
 
-function isolatedRun(t, overrides = {}, fixture = 'passing', setup = () => {}) {
+function isolatedRun(t: TestContext, overrides: Record<string, string> = {}, fixture = 'passing', setup: (home: string) => void = () => {}) {
   const home = mkdtempSync(path.join(tmpdir(), 'rrdapi-k6-isolation-'));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   setup(home);
@@ -93,17 +95,17 @@ describe('RRDAPI-10 child-process isolation', { timeout: 45_000 }, () => {
   it('accepts an owned loopback port below the macOS ephemeral range without traffic', async (t) => {
     let requests = 0;
     const server = createServer((_request, response) => { requests += 1; response.end(); });
-    const port = await new Promise((resolve, reject) => {
+    const port = await new Promise<number>((resolve, reject) => {
       let candidate = 49151;
-      const onError = (error) => {
+      const onError = (error: NodeJS.ErrnoException) => {
         if (error.code !== 'EADDRINUSE' || candidate <= 49000) return reject(error);
         server.listen(--candidate, '127.0.0.1');
       };
       server.on('error', onError);
-      server.once('listening', () => { server.removeListener('error', onError); resolve(server.address().port); });
+      server.once('listening', () => { server.removeListener('error', onError); resolve((server.address() as AddressInfo).port); });
       server.listen(candidate, '127.0.0.1');
     });
-    t.after(() => new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve())));
+    t.after(() => closeServer(server));
     const result = spawnSync(k6, ['inspect',
       '--env', `PERF_TARGET=http://127.0.0.1:${port}/`,
       '--env', `PERF_OWNED_PORT=${port}`,

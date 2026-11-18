@@ -1,11 +1,13 @@
 // k6 normally reads ambient options, user configuration and remote outputs.
 // Only this harness supplies its runtime settings. No parent credentials,
 // proxy, telemetry, exporter or K6_* settings are inherited.
-export function isolatedK6Environment() {
+export function isolatedK6Environment(): NodeJS.ProcessEnv {
   return {};
 }
 
-export function createK6Invocation(environment, workloadPath, configPath) {
+export function createK6Invocation(
+  environment: Record<string, string>, workloadPath: string, configPath: string,
+): { args: string[]; env: NodeJS.ProcessEnv } {
   const allowed = new Set([
     'PERF_TARGET', 'PERF_OWNED_PORT', 'PERF_WORKLOAD', 'PERF_REVISION',
     'PERF_WORKTREE_DIRTY', 'PERF_K6_VERSION', 'PERF_SUMMARY_PATH',

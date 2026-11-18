@@ -9,20 +9,20 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const runner = path.join(root, 'performance', 'run.mjs');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const runner = path.join(root, 'performance', 'run.ts');
 const configPath = path.join(root, 'performance', 'config', 'profiles.json');
 
-function run(args) {
+function run(args: string[]) {
   return spawnSync(process.execPath, [runner, ...args], {
     cwd: root,
     encoding: 'utf8',
   });
 }
 
-function getSummaryPath(output) {
+function getSummaryPath(output: string) {
   const match = output.match(/summary: (\.performance-results\/[0-9TZ+-]+-[0-9a-f-]+\.json)/);
-  assert.ok(match, 'run output should expose only the sanitized summary path');
+  assert.ok(match?.[1], 'run output should expose only the sanitized summary path');
   return path.join(root, match[1]);
 }
 
@@ -49,13 +49,14 @@ describe('RRDAPI-10 local performance harness', { timeout: 30_000 }, () => {
   });
 
   it('rejects repeated, missing and option-like values before runtime startup', () => {
-    for (const [args, message] of [
+    const cases: [string[], RegExp][] = [
       [['--profile', 'direct-mock', '--profile', 'dev'], /--profile may be selected only once/],
       [['--workload'], /Allowed options/],
       [['--workload', '--fixture', 'passing'], /Allowed options/],
       [['--workload=--fixture'], /Allowed options/],
       [['smoke'], /Allowed options/],
-    ]) {
+    ];
+    for (const [args, message] of cases) {
       const result = run(args);
       assert.notEqual(result.status, 0, args.join(' '));
       assert.match(result.stderr, message, args.join(' '));

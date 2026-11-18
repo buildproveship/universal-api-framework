@@ -2,13 +2,16 @@ import http from 'k6/http';
 import { check } from 'k6';
 import { Counter } from 'k6/metrics';
 import { hardLimitsWithinCeilings, lifecycleRequestCount, workloadWithinLimits } from './limits.js';
+
+/** @typedef {{ token?: string }} Session */
+/** @typedef {{ metrics: Record<string, { values?: Record<string, number> } | undefined>, state: { testRunDurationMs?: number } }} SummaryData */
 const profileConfig = JSON.parse(open('./config/profiles.json'));
 
 const profileName = __ENV.PERF_PROFILE || 'direct-mock';
 const profile = profileConfig.profiles[profileName];
 const isDev = profileName === 'dev';
 const lifecycleRequests = lifecycleRequestCount(profileName);
-const workloadName = __ENV.PERF_WORKLOAD;
+const workloadName = __ENV.PERF_WORKLOAD ?? '';
 const workload = profileConfig.workloads[workloadName];
 const target = /^http:\/\/(127\.0\.0\.1):([0-9]{1,5})\/$/.exec(__ENV.PERF_TARGET || '');
 const expectedVersion = '1';
@@ -72,6 +75,11 @@ export const options = {
   },
 };
 
+/**
+ * @param {string} route
+ * @param {string} [token]
+ * @returns {import('k6/http').Params}
+ */
 function requestOptions(route, token) {
   return {
     redirects: 0,
@@ -87,6 +95,10 @@ function requestOptions(route, token) {
   };
 }
 
+/**
+ * @param {import('k6/http').RefinedResponse<'text'>} response
+ * @returns {any} untrusted JSON, checked field by field below
+ */
 function jsonBody(response) {
   try { return response.json(); } catch { return null; }
 }
@@ -106,6 +118,7 @@ export function setup() {
   return { token: body.token };
 }
 
+/** @param {Session | undefined} session */
 export default function (session) {
   const route = isDev
     ? `/projects/${projectId}/environments/${environmentId}/configuration`
@@ -126,6 +139,7 @@ export default function (session) {
   if (results) completedChecks.add(1);
 }
 
+/** @param {Session | undefined} session */
 export function teardown(session) {
   if (!isDev || !session?.token) return;
   const response = http.post(`${targetOrigin}/api/dev/logout`, null,
@@ -133,10 +147,17 @@ export function teardown(session) {
   check(response, { 'owned Dev session is revoked': (res) => res.status === 204 });
 }
 
+/**
+ * @param {SummaryData} data
+ * @param {string} metricName
+ * @param {string} valueName
+ * @returns {number}
+ */
 function metricValue(data, metricName, valueName) {
   return data.metrics[metricName]?.values?.[valueName] ?? 0;
 }
 
+/** @param {SummaryData} data */
 export function handleSummary(data) {
   const requests = metricValue(data, 'http_reqs', 'count');
   const durationMs = data.state.testRunDurationMs ?? 0;
@@ -169,8 +190,9 @@ export function handleSummary(data) {
   };
   const serialized = JSON.stringify(summary, null, 2);
 
+  const summaryPath = __ENV.PERF_SUMMARY_PATH;
   return {
     stdout: `${serialized}\n`,
-    [__ENV.PERF_SUMMARY_PATH]: `${serialized}\n`,
+    ...(summaryPath ? { [summaryPath]: `${serialized}\n` } : {}),
   };
 }
