@@ -1,12 +1,13 @@
 import http from 'k6/http';
 import { check } from 'k6';
 import { Counter } from 'k6/metrics';
+import { hardLimitsWithinCeilings, lifecycleRequestCount, workloadWithinLimits } from './limits.js';
 const profileConfig = JSON.parse(open('./config/profiles.json'));
 
 const profileName = __ENV.PERF_PROFILE || 'direct-mock';
 const profile = profileConfig.profiles[profileName];
 const isDev = profileName === 'dev';
-const lifecycleRequests = isDev ? 2 : 0;
+const lifecycleRequests = lifecycleRequestCount(profileName);
 const workloadName = __ENV.PERF_WORKLOAD;
 const workload = profileConfig.workloads[workloadName];
 const target = /^http:\/\/(127\.0\.0\.1):([0-9]{1,5})\/$/.exec(__ENV.PERF_TARGET || '');
@@ -34,38 +35,13 @@ if (
 }
 
 const targetOrigin = `http://${target[1]}:${target[2]}`;
-const hardLimits = profileConfig.hardLimits;
-const absoluteLimits = {
-  maxVus: 2,
-  maxRatePerSecond: 2,
-  maxDurationSeconds: 10,
-  maxRequestTimeoutMilliseconds: 1000,
-  maxRequestCount: 20,
-};
 const duration = workload.durationSeconds;
 
-for (const [name, maximum] of Object.entries(absoluteLimits)) {
-  if (
-    !Number.isInteger(hardLimits[name]) ||
-    hardLimits[name] < 1 ||
-    hardLimits[name] > maximum
-  ) {
-    throw new Error('Configured hard limits exceed absolute safety ceilings; no requests were sent.');
-  }
+if (!hardLimitsWithinCeilings(profileConfig.hardLimits)) {
+  throw new Error('Configured hard limits exceed absolute safety ceilings; no requests were sent.');
 }
 
-if (
-  ![workload.vus, workload.ratePerSecond, duration,
-    workload.requestTimeoutMilliseconds, workload.maxRequests]
-    .every((value) => Number.isInteger(value) && value > 0) ||
-  workload.vus > hardLimits.maxVus ||
-  workload.ratePerSecond > hardLimits.maxRatePerSecond ||
-  duration > hardLimits.maxDurationSeconds ||
-  workload.requestTimeoutMilliseconds > hardLimits.maxRequestTimeoutMilliseconds ||
-  workload.ratePerSecond * duration + lifecycleRequests > hardLimits.maxRequestCount ||
-  workload.ratePerSecond * duration + lifecycleRequests > workload.maxRequests ||
-  workload.maxRequests > hardLimits.maxRequestCount
-) {
+if (!workloadWithinLimits(workload, profileConfig.hardLimits, lifecycleRequests)) {
   throw new Error('Configured workload exceeds a hard safety ceiling; no requests were sent.');
 }
 

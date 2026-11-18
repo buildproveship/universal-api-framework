@@ -1,3 +1,7 @@
+// Test classification: integration
+// Review status: Not Reviewed
+// Evidence: synthetic
+// Scope: the performance runner CLI with pinned k6 against its owned synthetic loopback fixture; it does not start the Dev Platform runtime.
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { spawnSync } from 'node:child_process';
@@ -42,6 +46,21 @@ describe('RRDAPI-10 local performance harness', { timeout: 30_000 }, () => {
     assert.equal(override.stdout, '');
     assert.notEqual(production.status, 0);
     assert.match(production.stderr, /not present/);
+  });
+
+  it('rejects repeated, missing and option-like values before runtime startup', () => {
+    for (const [args, message] of [
+      [['--profile', 'direct-mock', '--profile', 'dev'], /--profile may be selected only once/],
+      [['--workload'], /Allowed options/],
+      [['--workload', '--fixture', 'passing'], /Allowed options/],
+      [['--workload=--fixture'], /Allowed options/],
+      [['smoke'], /Allowed options/],
+    ]) {
+      const result = run(args);
+      assert.notEqual(result.status, 0, args.join(' '));
+      assert.match(result.stderr, message, args.join(' '));
+      assert.equal(result.stdout, '', args.join(' '));
+    }
   });
 
   it('writes a sanitized summary for a passing bounded fixture run', async () => {

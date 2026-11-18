@@ -1,3 +1,7 @@
+// Test classification: integration
+// Review status: Not Reviewed
+// Evidence: synthetic
+// Scope: child-process probe for preflight resource floors and heap exhaustion, run only from intake-preflight.test.ts.
 // Run only in a separate process: regressions in resource handling can abort Node.
 import { preflight, type PreflightPolicy } from '../../src/intake/preflight.js';
 

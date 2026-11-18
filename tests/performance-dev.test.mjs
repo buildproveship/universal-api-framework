@@ -1,3 +1,7 @@
+// Test classification: integration
+// Review status: Not Reviewed
+// Evidence: synthetic
+// Scope: Dev profile workload policy through k6 inspect and an in-memory k6 stand-in; it sends no traffic and starts no Docker runtime.
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { spawnSync } from 'node:child_process';
@@ -5,6 +9,7 @@ import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as limits from '../performance/limits.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const k6 = path.join(root, '.tools', 'k6', 'k6');
@@ -55,6 +60,7 @@ describe('Owned Platform Dev workload policy without traffic', () => {
         __ENV: { PERF_PROFILE: profile, PERF_WORKLOAD: profile === 'dev' ? 'dev-smoke' : 'smoke',
           PERF_TARGET: 'http://127.0.0.1:45000/', PERF_OWNED_PORT: '45000', PERF_HOST: 'untrusted.invalid' },
         open: () => JSON.stringify(profiles),
+        ...limits,
         Counter: class { add() {} },
         check: (value, checks) => Object.values(checks).every(fn => fn(value)),
         http: {
@@ -78,6 +84,33 @@ describe('Owned Platform Dev workload policy without traffic', () => {
         assert.equal(call.options.redirects, 0);
       }
     }
+  });
+
+  it('refuses configuration above the shared ceilings inside k6 before any request', () => {
+    const source = readFileSync(workload, 'utf8').replace(/^import .*;\n/gm, '')
+      .replace('export default function (session)', 'function executeWorkload(session)')
+      .replace(/export (const|function) /g, '$1 ');
+    const run = (config) => {
+      const calls = [];
+      const context = {
+        __ENV: { PERF_PROFILE: 'direct-mock', PERF_WORKLOAD: 'smoke', PERF_TARGET: 'http://127.0.0.1:45000/', PERF_OWNED_PORT: '45000' },
+        open: () => JSON.stringify(config),
+        ...limits,
+        Counter: class { add() {} },
+        check: () => true,
+        http: { get: (url) => { calls.push(url); }, post: (url) => { calls.push(url); } },
+      };
+      try { vm.runInNewContext(source, context); return { calls }; } catch (error) { return { calls, error: String(error) }; }
+    };
+    assert.equal(run(profiles).error, undefined);
+    const raisedCeiling = structuredClone(profiles);
+    raisedCeiling.hardLimits.maxVus = limits.absoluteLimits.maxVus + 1;
+    assert.match(run(raisedCeiling).error, /absolute safety ceilings/);
+    const oversizedWorkload = structuredClone(profiles);
+    oversizedWorkload.workloads.smoke.vus = profiles.hardLimits.maxVus + 1;
+    const result = run(oversizedWorkload);
+    assert.match(result.error, /hard safety ceiling/);
+    assert.deepEqual(result.calls, []);
   });
 
   it('rejects mutable image references before Docker or Platform source access', () => {

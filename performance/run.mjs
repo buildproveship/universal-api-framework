@@ -4,7 +4,9 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { parseArgs } from 'node:util';
 import { createK6Invocation, isolatedK6Environment } from './k6-runtime.mjs';
+import { hardLimitsWithinCeilings, lifecycleRequestCount, workloadWithinLimits } from './limits.js';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const configPath = path.join(projectRoot, 'performance', 'config', 'profiles.json');
@@ -13,68 +15,37 @@ const k6Path = path.join(projectRoot, '.tools', 'k6', 'k6');
 const workloadPath = path.join(projectRoot, 'performance', 'workload.js');
 const k6ConfigPath = path.join(projectRoot, 'performance', 'config', 'k6-isolated.json');
 const summaryDirectory = path.join(projectRoot, '.performance-results');
-const absoluteLimits = {
-  maxVus: 2,
-  maxRatePerSecond: 2,
-  maxDurationSeconds: 10,
-  maxRequestTimeoutMilliseconds: 1000,
-  maxRequestCount: 20,
-};
+const allowedOptions = ['profile', 'workload', 'fixture', 'platform-root', 'platform-image'];
+const optionError = 'Allowed options are --profile, --workload, --fixture, --platform-root, and --platform-image with configured values only.';
 
 function parseArguments(args) {
-  const parsed = { profile: 'direct-mock', workload: 'smoke', fixture: 'passing' };
-  const seen = new Set();
-
-  for (let index = 0; index < args.length; index += 1) {
-    const option = args[index];
-    const value = args[index + 1];
-
-    if (!['--profile', '--workload', '--fixture', '--platform-root', '--platform-image'].includes(option) || value === undefined) {
-      throw new Error('Allowed options are --profile, --workload, --fixture, --platform-root, and --platform-image with configured values only.');
-    }
-
-    const key = option.slice(2);
-
-    if (seen.has(key)) {
-      throw new Error(`Option ${option} may be selected only once.`);
-    }
-
-    seen.add(key);
-    parsed[key] = value;
-    index += 1;
+  let parsed;
+  try {
+    parsed = parseArgs({
+      args,
+      strict: true,
+      allowPositionals: false,
+      options: Object.fromEntries(allowedOptions.map((name) => [name, { type: 'string', multiple: true }])),
+    }).values;
+  } catch {
+    throw new Error(optionError);
   }
-
-  return parsed;
+  const selection = { profile: 'direct-mock', workload: 'smoke', fixture: 'passing' };
+  for (const [key, values] of Object.entries(parsed)) {
+    if (values.length !== 1) throw new Error(`Option --${key} may be selected only once.`);
+    // parseArgs accepts "--profile=--workload"; a value must never look like an option.
+    if (values[0].startsWith('--')) throw new Error(optionError);
+    selection[key] = values[0];
+  }
+  return selection;
 }
 
 function validateConfiguration() {
-  const limits = config.hardLimits;
-
-  for (const [name, maximum] of Object.entries(absoluteLimits)) {
-    if (!Number.isInteger(limits[name]) || limits[name] < 1 || limits[name] > maximum) {
-      throw new Error(`Configured hard limit "${name}" is invalid or exceeds its absolute safety ceiling.`);
-    }
+  if (!hardLimitsWithinCeilings(config.hardLimits)) {
+    throw new Error('A configured hard limit is invalid or exceeds its absolute safety ceiling.');
   }
-
   for (const [name, workload] of Object.entries(config.workloads)) {
-    if (
-      !Number.isInteger(workload.ratePerSecond) ||
-      !Number.isInteger(workload.durationSeconds) ||
-      !Number.isInteger(workload.vus) ||
-      !Number.isInteger(workload.requestTimeoutMilliseconds) ||
-      !Number.isInteger(workload.maxRequests) ||
-      workload.ratePerSecond < 1 ||
-      workload.durationSeconds < 1 ||
-      workload.vus < 1 ||
-      workload.requestTimeoutMilliseconds < 1 ||
-      workload.ratePerSecond > limits.maxRatePerSecond ||
-      workload.durationSeconds > limits.maxDurationSeconds ||
-      workload.vus > limits.maxVus ||
-      workload.requestTimeoutMilliseconds > limits.maxRequestTimeoutMilliseconds ||
-      workload.ratePerSecond * workload.durationSeconds > limits.maxRequestCount ||
-      workload.ratePerSecond * workload.durationSeconds > workload.maxRequests ||
-      workload.maxRequests > limits.maxRequestCount
-    ) {
+    if (!workloadWithinLimits(workload, config.hardLimits)) {
       throw new Error(`Configured workload "${name}" is invalid or exceeds a hard safety ceiling.`);
     }
   }
@@ -237,8 +208,7 @@ async function main() {
     throw new Error('Fixture mode is not supported by the selected profile.');
   }
   const workload = config.workloads[selection.workload];
-  const totalRequests = workload.ratePerSecond * workload.durationSeconds + (isDev ? 2 : 0);
-  if (totalRequests > workload.maxRequests || totalRequests > config.hardLimits.maxRequestCount) {
+  if (!workloadWithinLimits(workload, config.hardLimits, lifecycleRequestCount(selection.profile))) {
     throw new Error('Workload and authentication requests exceed the request ceiling.');
   }
 

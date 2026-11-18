@@ -1,3 +1,7 @@
+// Test classification: integration
+// Review status: Not Reviewed
+// Evidence: synthetic
+// Scope: test-only fetch client that reaches only one configured IPv4 loopback fixture origin; exercised by smoke.test.ts and target-safety.test.ts.
 const REQUEST_TIMEOUT_MS = 5_000;
 
 export interface LocalHttpClient {

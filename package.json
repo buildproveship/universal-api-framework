@@ -11,7 +11,6 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc",
     "test": "npm run build && node --test --test-concurrency=1 --test-reporter=spec dist/tests/*.test.js",
-    "test:smoke": "npm test",
     "perf:install-k6": "node performance/install-k6.mjs",
     "perf:smoke": "node performance/run.mjs --profile direct-mock --workload smoke --fixture passing",
     "perf:fixture-fail": "node performance/run.mjs --profile direct-mock --workload smoke --fixture failing",

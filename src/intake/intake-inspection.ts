@@ -1,6 +1,11 @@
 import { isAlias, isMap, isNode, isScalar, isSeq, parseDocument } from 'yaml';
 import { reject, type PreflightPolicy, type IntakeResult } from './preflight.js';
 
+/** Versions the document-schema stage is tested against; narrower than preflight. */
+const SCHEMA_VALIDATED_VERSIONS: readonly string[] = ['3.0.0', '3.0.1', '3.0.2', '3.0.3', '3.0.4'];
+// URI scope and dynamic/anchor resolution are outside this preflight.
+const UNSUPPORTED_SCOPE_KEYS: readonly string[] = ['$id', '$anchor', '$dynamicAnchor', '$dynamicRef', '$recursiveRef', '$recursiveAnchor'];
+
 export interface IntakeInput {
   source: string; format: 'json' | 'yaml'; policy: PreflightPolicy; mode: 'preflight' | 'schema';
 }
@@ -38,8 +43,7 @@ export async function inspectInput({ source, format, policy, mode }: IntakeInput
         if (!isScalar(pair.key) || typeof pair.key.value !== 'string') return reject('unsupported-yaml', offset);
         const key = pair.key.value;
         if (key === '<<') return reject('unsupported-yaml', pair.key.range?.[0]);
-        // URI scope and dynamic/anchor resolution are outside this preflight.
-        if (['$id', '$anchor', '$dynamicAnchor', '$dynamicRef', '$recursiveRef', '$recursiveAnchor'].includes(key)) {
+        if (UNSUPPORTED_SCOPE_KEYS.includes(key)) {
           return reject('reference-unsupported', pair.key.range?.[0]);
         }
         if (key === '$ref') {
@@ -68,7 +72,7 @@ export async function inspectInput({ source, format, policy, mode }: IntakeInput
   if (typeof version !== 'string' || !policy.allowedOpenApiVersions.includes(version)) return reject('version-not-allowed');
   if (mode === 'schema') {
     // This stage has a deliberately narrower technical capability than preflight.
-    if (!['3.0.0', '3.0.1', '3.0.2', '3.0.3', '3.0.4'].includes(version)) {
+    if (!SCHEMA_VALIDATED_VERSIONS.includes(version)) {
       const node = doc.contents.get('openapi', true);
       return reject('schema-version-unsupported', isNode(node) ? node.range?.[0] : undefined);
     }
