@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["k6"],
+    "skipLibCheck": true
+  },
+  "include": ["performance/workload.js", "performance/limits.js"],
+  "exclude": []
+}

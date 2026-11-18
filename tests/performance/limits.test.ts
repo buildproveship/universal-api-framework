@@ -7,9 +7,12 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import {
   absoluteLimits, hardLimitsWithinCeilings, lifecycleRequestCount, workloadWithinLimits,
-} from '../performance/limits.js';
+  type HardLimits, type Workload,
+} from '../../performance/limits.js';
 
-const profiles = JSON.parse(readFileSync(new URL('../performance/config/profiles.json', import.meta.url), 'utf8'));
+const profiles: {
+  hardLimits: HardLimits; profiles: Record<string, { workloads: string[] }>; workloads: Record<string, Workload>;
+} = JSON.parse(readFileSync(new URL('../../performance/config/profiles.json', import.meta.url), 'utf8'));
 const limits = { ...absoluteLimits };
 const workload = { vus: 1, ratePerSecond: 1, durationSeconds: 2, requestTimeoutMilliseconds: 1000, maxRequests: 2 };
 
@@ -24,7 +27,7 @@ describe('Shared performance safety ceilings', () => {
   });
 
   it('Given a hard limit above its absolute ceiling or not a positive integer, then the limits are refused', () => {
-    for (const name of Object.keys(absoluteLimits)) {
+    for (const name of Object.keys(absoluteLimits) as (keyof HardLimits)[]) {
       for (const value of [absoluteLimits[name] + 1, 0, 1.5, '1', undefined]) {
         assert.equal(hardLimitsWithinCeilings({ ...limits, [name]: value }), false, `${name}=${value}`);
       }

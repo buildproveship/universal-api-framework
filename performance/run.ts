@@ -1,41 +1,60 @@
 import { randomUUID } from 'node:crypto';
-import { createServer } from 'node:http';
+import { createServer, type Server } from 'node:http';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { createK6Invocation, isolatedK6Environment } from './k6-runtime.mjs';
-import { hardLimitsWithinCeilings, lifecycleRequestCount, workloadWithinLimits } from './limits.js';
+import { createK6Invocation, isolatedK6Environment } from './k6-runtime.ts';
+import { hardLimitsWithinCeilings, lifecycleRequestCount, workloadWithinLimits, type HardLimits, type Workload } from './limits.js';
+import { closeServer, listenOnLoopback } from './loopback.ts';
+import type { PlatformRuntime, Settlement, SettlementError } from './platform-runtime.ts';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const configPath = path.join(projectRoot, 'performance', 'config', 'profiles.json');
-const config = JSON.parse(await readFile(configPath, 'utf8'));
+interface Profile {
+  enabled: boolean; blockedReason?: string; environment: string; mockBoundaries: string; workloads: string[];
+}
+interface PerformanceConfig { hardLimits: HardLimits; profiles: Record<string, Profile | undefined>; workloads: Record<string, Workload | undefined> }
+interface Selection { profile: string; workload: string; fixture: string; 'platform-root'?: string; 'platform-image'?: string }
+type FixtureMode = 'passing' | 'failing' | 'redirecting';
+// Untrusted until validateConfiguration() has run.
+const config = JSON.parse(await readFile(configPath, 'utf8')) as PerformanceConfig;
+/** Sanitized run summary written by the k6 workload and completed here. */
+interface RunSummary {
+  metrics: { requestCount: number | null };
+  platform?: Awaited<ReturnType<PlatformRuntime['evidence']>>;
+  runStatus?: string; runExitCode?: number; cleanup?: Settlement | { complete: false };
+  [field: string]: unknown;
+}
 const k6Path = path.join(projectRoot, '.tools', 'k6', 'k6');
 const workloadPath = path.join(projectRoot, 'performance', 'workload.js');
 const k6ConfigPath = path.join(projectRoot, 'performance', 'config', 'k6-isolated.json');
 const summaryDirectory = path.join(projectRoot, '.performance-results');
-const allowedOptions = ['profile', 'workload', 'fixture', 'platform-root', 'platform-image'];
+const allowedOptions = ['profile', 'workload', 'fixture', 'platform-root', 'platform-image'] as const;
 const optionError = 'Allowed options are --profile, --workload, --fixture, --platform-root, and --platform-image with configured values only.';
 
-function parseArguments(args) {
-  let parsed;
+function parseArguments(args: string[]): Selection {
+  let parsed: Partial<Record<string, string[]>>;
   try {
     parsed = parseArgs({
       args,
       strict: true,
       allowPositionals: false,
-      options: Object.fromEntries(allowedOptions.map((name) => [name, { type: 'string', multiple: true }])),
-    }).values;
+      options: Object.fromEntries(allowedOptions.map((name) => [name, { type: 'string' as const, multiple: true }])),
+    }).values as Partial<Record<string, string[]>>;
   } catch {
     throw new Error(optionError);
   }
-  const selection = { profile: 'direct-mock', workload: 'smoke', fixture: 'passing' };
-  for (const [key, values] of Object.entries(parsed)) {
+  const selection: Selection = { profile: 'direct-mock', workload: 'smoke', fixture: 'passing' };
+  for (const key of allowedOptions) {
+    const values = parsed[key];
+    if (values === undefined) continue;
     if (values.length !== 1) throw new Error(`Option --${key} may be selected only once.`);
+    const [value = ''] = values;
     // parseArgs accepts "--profile=--workload"; a value must never look like an option.
-    if (values[0].startsWith('--')) throw new Error(optionError);
-    selection[key] = values[0];
+    if (value.startsWith('--')) throw new Error(optionError);
+    selection[key] = value;
   }
   return selection;
 }
@@ -80,11 +99,11 @@ function verifyK6() {
   return result.stdout.trim().split(/\s+/).slice(0, 2).join(' ');
 }
 
-function makeFixture(mode, redirectTarget) {
+function makeFixture(mode: FixtureMode, redirectTarget: string | undefined): Server {
   return createServer((request, response) => {
     if (mode === 'redirecting' && request.method === 'GET' && request.url === '/widgets/widget-1') {
       response.writeHead(302, {
-        Location: redirectTarget,
+        Location: redirectTarget ?? '',
         'Content-Type': 'application/json; charset=utf-8',
       });
       response.end(JSON.stringify({ id: 'redirected-widget', active: true, version: '1' }));
@@ -124,30 +143,7 @@ function makeRedirectDestination() {
   };
 }
 
-async function listenOnLoopback(server) {
-  await new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      server.removeListener('error', reject);
-      resolve();
-    });
-  });
-  const address = server.address();
-
-  if (!address || typeof address === 'string' || address.address !== '127.0.0.1') {
-    throw new Error('The performance fixture did not bind to IPv4 loopback.');
-  }
-
-  return `http://127.0.0.1:${address.port}/`;
-}
-
-async function closeServer(server) {
-  await new Promise((resolve, reject) => {
-    server.close((error) => (error ? reject(error) : resolve()));
-  });
-}
-
-function runK6(environment) {
+function runK6(environment: Record<string, string>): Promise<{ code: number; interrupted: boolean; diagnostics: string }> {
   const invocation = createK6Invocation(environment, workloadPath, k6ConfigPath);
   const child = spawn(k6Path, invocation.args, {
     cwd: projectRoot,
@@ -162,7 +158,7 @@ function runK6(environment) {
     }
   });
   let interrupted = false;
-  const forwardSignal = (signal) => {
+  const forwardSignal = (signal: NodeJS.Signals) => {
     interrupted = true;
     child.kill(signal);
   };
@@ -204,7 +200,9 @@ async function main() {
   if (!config.workloads[selection.workload] || !selectedProfile.workloads.includes(selection.workload)) {
     throw new Error('Workload is not present in the selected versioned performance profile.');
   }
-  if (!(isDev ? ['passing', 'failing'] : ['passing', 'failing', 'redirecting']).includes(selection.fixture)) {
+  const fixtureMode = (isDev ? ['passing', 'failing'] : ['passing', 'failing', 'redirecting'] as const)
+    .find((mode): mode is FixtureMode => mode === selection.fixture);
+  if (!fixtureMode) {
     throw new Error('Fixture mode is not supported by the selected profile.');
   }
   const workload = config.workloads[selection.workload];
@@ -222,18 +220,18 @@ async function main() {
   const interrupt = () => { interrupted = true; controller.abort(); };
   process.once('SIGINT', interrupt);
   process.once('SIGTERM', interrupt);
-  let platform;
-  let fixture;
-  let redirectDestination;
-  let summary;
-  let result;
-  let failure;
-  let cleanup;
+  let platform: PlatformRuntime | undefined;
+  let fixture: Server | undefined;
+  let redirectDestination: ReturnType<typeof makeRedirectDestination> | undefined;
+  let summary: RunSummary | undefined;
+  let result: Awaited<ReturnType<typeof runK6>> | undefined;
+  let failure: unknown;
+  let cleanup: Settlement | undefined;
   let k6Started = false;
   try {
-    let baseUrl;
+    let baseUrl: string;
     if (isDev) {
-      const { startPlatformRuntime } = await import('./platform-runtime.mjs');
+      const { startPlatformRuntime } = await import('./platform-runtime.ts');
       platform = await startPlatformRuntime({
         platformRoot: selection['platform-root'],
         image: selection['platform-image'],
@@ -241,10 +239,10 @@ async function main() {
       });
       baseUrl = platform.baseUrl.replace(/\/?$/, '/');
     } else {
-      redirectDestination = selection.fixture === 'redirecting' ? makeRedirectDestination() : undefined;
-      const redirectTarget = redirectDestination ? await listenOnLoopback(redirectDestination.server) : undefined;
-      fixture = makeFixture(selection.fixture, redirectTarget);
-      baseUrl = await listenOnLoopback(fixture);
+      redirectDestination = fixtureMode === 'redirecting' ? makeRedirectDestination() : undefined;
+      const redirectTarget = redirectDestination ? `${await listenOnLoopback(redirectDestination.server)}/` : undefined;
+      fixture = makeFixture(fixtureMode, redirectTarget);
+      baseUrl = `${await listenOnLoopback(fixture)}/`;
     }
     if (controller.signal.aborted) throw new Error('Owned runtime startup was cancelled.');
     k6Started = true;
@@ -252,7 +250,7 @@ async function main() {
       PERF_TARGET: baseUrl,
       PERF_OWNED_PORT: new URL(baseUrl).port,
       PERF_PROFILE: selection.profile,
-      PERF_EXPECT_FAILURE: String(isDev && selection.fixture === 'failing'),
+      PERF_EXPECT_FAILURE: String(isDev && fixtureMode === 'failing'),
       PERF_WORKLOAD: selection.workload,
       PERF_REVISION: revision.revision,
       PERF_WORKTREE_DIRTY: String(revision.dirty),
@@ -263,20 +261,21 @@ async function main() {
       throw new Error('The local redirect destination received traffic; refusing the run result.');
     }
     try {
-      summary = JSON.parse(await readFile(summaryPath, 'utf8'));
+      summary = JSON.parse(await readFile(summaryPath, 'utf8')) as RunSummary;
     } catch {
       // Child diagnostics may contain runtime data. Never persist or echo them.
       throw new Error(`k6 exited with code ${result.code}; no sanitized summary was produced.`);
     }
     if (platform && !interrupted) {
-      summary.platform = await platform.evidence();
-      if (!(summary.platform.matchedLoginRequests > 0) || summary.platform.unmatchedRequests !== 0 || !summary.platform.noDefaultRoute) {
+      const evidence = await platform.evidence();
+      summary.platform = evidence;
+      if (!(evidence.matchedLoginRequests > 0) || evidence.unmatchedRequests !== 0 || !evidence.noDefaultRoute) {
         throw new Error('Actual Platform/WireMock login or isolation evidence is incomplete.');
       }
     }
   } catch (error) {
     failure = error;
-    if (error?.settlement) cleanup = error.settlement;
+    cleanup = (error as SettlementError | undefined)?.settlement ?? cleanup;
   } finally {
     try {
       if (platform) {
@@ -286,11 +285,11 @@ async function main() {
         }
       }
       await Promise.all([
-        fixture?.listening ? closeServer(fixture) : Promise.resolve(),
-        redirectDestination?.server.listening ? closeServer(redirectDestination.server) : Promise.resolve(),
+        fixture ? closeServer(fixture) : undefined,
+        redirectDestination ? closeServer(redirectDestination.server) : undefined,
       ]);
     } catch (error) {
-      if (error?.settlement) cleanup = error.settlement;
+      cleanup = (error as SettlementError | undefined)?.settlement ?? cleanup;
       failure ??= error;
     }
     process.removeListener('SIGINT', interrupt);

@@ -176,7 +176,8 @@ Local pointers must traverse exact own properties under RFC 6901, including
 escaped tokens and canonical array indices; inherited properties and joined
 missing tokens cannot resolve. The exact-pinned `@apidevtools/swagger-parser`
 performs dereferencing with the restrictions below. Its minimum supported Node
-version sets the package `engines` floor. External
+version, and Node's built-in TypeScript type stripping used by the performance
+harness, set the package `engines` floor. External
 references are rejected by preflight **before validator invocation**; file/HTTP
 resolvers and secondary JSON/YAML/text/binary input parsers are additionally disabled.
 Circular references return `circular-reference-unsupported` in this bounded stage, including

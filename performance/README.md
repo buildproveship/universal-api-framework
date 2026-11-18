@@ -15,7 +15,11 @@ workload is required for the smoke checks below.
 
 ## Direct fixture setup
 
-Use Node.js 22.12+ and npm in a clean API checkout:
+Use the Node.js version that `package.json` `engines` requires, and npm, in a clean
+API checkout. The harness is TypeScript that Node runs directly through its built-in
+type stripping (no build step); `npm run typecheck` checks it strictly with
+`tsconfig.performance.json`. `workload.js` and `limits.js` stay JavaScript because
+k6 runs them; `limits.js` holds the safety ceilings that both k6 and the runner use.
 
 ```sh
 npm ci

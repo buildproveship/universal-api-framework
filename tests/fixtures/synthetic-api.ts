@@ -3,7 +3,7 @@
 // Evidence: synthetic
 // Scope: test-only synthetic HTTP API on IPv4 loopback used by the smoke, target-safety and intake suites.
 import { createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import { closeServer, listenOnLoopback } from '../../performance/loopback.js';
 
 export interface SyntheticApi {
   readonly origin: string;
@@ -48,30 +48,13 @@ export async function startSyntheticApi(options: { redirectTarget?: string } = {
     response.end(JSON.stringify({ error: 'not_found' }));
   });
 
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      server.removeListener('error', reject);
-      resolve();
-    });
-  });
-
-  const address = server.address() as AddressInfo;
+  const origin = await listenOnLoopback(server);
 
   return {
-    origin: `http://127.0.0.1:${address.port}`,
+    origin,
     get requestCount() {
       return requestCount;
     },
-    close: () =>
-      new Promise<void>((resolve, reject) => {
-        server.close((error) => {
-          if (error) {
-            reject(error);
-          } else {
-            resolve();
-          }
-        });
-      }),
+    close: () => closeServer(server),
   };
 }

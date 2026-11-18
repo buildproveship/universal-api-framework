@@ -9,7 +9,7 @@ const version = '0.54.0';
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const installDirectory = path.join(projectRoot, '.tools', 'k6');
 const executablePath = path.join(installDirectory, 'k6');
-const assets = {
+const assets: Partial<Record<string, { name: string; sha256: string; archive: 'zip' | 'tar' }>> = {
   'darwin-arm64': {
     name: `k6-v${version}-macos-arm64.zip`,
     sha256: '9fb42e1343d28fc26e6efa1269283edf39ddc20767249869c84aa333741fc3ae',
@@ -32,7 +32,7 @@ const assets = {
   },
 };
 
-function run(command, args) {
+function run(command: string, args: string[]): string {
   const result = spawnSync(command, args, { encoding: 'utf8' });
 
   if (result.error || result.status !== 0) {
@@ -42,7 +42,7 @@ function run(command, args) {
   return result.stdout.trim();
 }
 
-async function download(url) {
+async function download(url: string): Promise<Buffer> {
   const response = await fetch(url);
   const finalUrl = new URL(response.url);
   const allowedHosts = new Set([
