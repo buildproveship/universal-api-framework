@@ -4,21 +4,31 @@ import SwaggerParser from '@apidevtools/swagger-parser';
 import { isMap, isNode, isScalar, isSeq, type Document } from 'yaml';
 import { reject, type SchemaValidationResult } from './preflight.js';
 
+// OAS 3.0 Components Object: these map keys must match COMPONENT_NAME.
+const COMPONENT_MAPS = ['schemas', 'responses', 'parameters', 'examples', 'requestBodies', 'headers', 'securitySchemes', 'links', 'callbacks'] as const;
+const COMPONENT_NAME = /^[a-zA-Z0-9._-]+$/;
+const ARRAY_INDEX = /^(0|[1-9][0-9]*)$/;
+const INVALID_ESCAPE = /~(?![01])/;
+
+/** RFC 6901 reference-token unescaping (~1 before ~0). */
+function decodePointerToken(token: string): string {
+  return token.replaceAll('~1', '/').replaceAll('~0', '~');
+}
+
 // Only used after the shared preflight has rejected external references and
 // unsupported syntax. Do not use this internal module as an intake boundary.
 export async function validateParsedDocument(doc: Document.Parsed): Promise<SchemaValidationResult> {
   const parser = new SwaggerParser();
   try {
-    // OAS 3.0 Components Object requires these map keys to match this pattern.
     // The maintained schema uses patternProperties without forbidding unmatched
     // keys, so invalid names could otherwise skip Schema Object validation.
     const components = isMap(doc.contents) ? doc.contents.get('components', true) : undefined;
     if (isMap(components)) {
-      for (const field of ['schemas', 'responses', 'parameters', 'examples', 'requestBodies', 'headers', 'securitySchemes', 'links', 'callbacks']) {
+      for (const field of COMPONENT_MAPS) {
         const entries = components.get(field, true);
         if (!isMap(entries)) continue;
         for (const pair of entries.items) {
-          if (isScalar(pair.key) && typeof pair.key.value === 'string' && !/^[a-zA-Z0-9._-]+$/.test(pair.key.value)) {
+          if (isScalar(pair.key) && typeof pair.key.value === 'string' && !COMPONENT_NAME.test(pair.key.value)) {
             return reject('document-schema-invalid', pair.key.range?.[0]);
           }
         }
@@ -63,9 +73,11 @@ function record(value: unknown): value is Record<string, unknown> {
 
 function componentNamesValid(root: unknown): boolean {
   if (!record(root) || !record(root.components)) return true;
-  return ['schemas', 'responses', 'parameters', 'examples', 'requestBodies', 'headers', 'securitySchemes', 'links', 'callbacks']
-    .every(field => !record(root.components) || !record(root.components[field]) ||
-      Object.keys(root.components[field]).every(key => /^[a-zA-Z0-9._-]+$/.test(key)));
+  const components = root.components;
+  return COMPONENT_MAPS.every(field => {
+    const entries = components[field];
+    return !record(entries) || Object.keys(entries).every(key => COMPONENT_NAME.test(key));
+  });
 }
 
 // RFC 6901 traversal is against the original document, without inherited
@@ -85,10 +97,10 @@ function strictReferences(root: unknown): 'document-schema-invalid' | 'reference
       if (fragment !== '' && !fragment.startsWith('/')) return 'document-schema-invalid';
       let target: unknown = root;
       for (const encoded of fragment === '' ? [] : fragment.slice(1).split('/')) {
-        if (/~(?![01])/.test(encoded)) return 'document-schema-invalid';
-        const token = encoded.replaceAll('~1', '/').replaceAll('~0', '~');
+        if (INVALID_ESCAPE.test(encoded)) return 'document-schema-invalid';
+        const token = decodePointerToken(encoded);
         if (!record(target) || !Object.hasOwn(target, token)) return 'document-schema-invalid';
-        if (Array.isArray(target) && !/^(0|[1-9][0-9]*)$/.test(token)) return 'document-schema-invalid';
+        if (Array.isArray(target) && !ARRAY_INDEX.test(token)) return 'document-schema-invalid';
         target = target[token];
       }
     }
@@ -102,8 +114,8 @@ function sourceOffset(doc: Document.Parsed, error: unknown): number | undefined 
   for (const detail of error.details) {
     if (!detail || typeof detail !== 'object' || typeof detail.instancePath !== 'string') continue;
     const pointer: string = detail.instancePath;
-    if (pointer !== '' && (!pointer.startsWith('/') || /~(?![01])/.test(pointer))) continue;
-    const parts = pointer === '' ? [] : pointer.slice(1).split('/').map(p => p.replaceAll('~1', '/').replaceAll('~0', '~'));
+    if (pointer !== '' && (!pointer.startsWith('/') || INVALID_ESCAPE.test(pointer))) continue;
+    const parts = pointer === '' ? [] : pointer.slice(1).split('/').map(decodePointerToken);
     let node: unknown = doc.contents;
     for (const part of parts) {
       if (isMap(node)) {
@@ -111,7 +123,7 @@ function sourceOffset(doc: Document.Parsed, error: unknown): number | undefined 
         // Its derived children must not be attributed to original siblings.
         if (node.has('$ref')) { node = undefined; break; }
         node = node.items.find(pair => isScalar(pair.key) && pair.key.value === part)?.value;
-      } else if (isSeq(node) && /^(0|[1-9][0-9]*)$/.test(part)) {
+      } else if (isSeq(node) && ARRAY_INDEX.test(part)) {
         node = node.items[Number(part)];
       } else {
         node = undefined;

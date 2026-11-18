@@ -44,6 +44,21 @@ describe('RRDAPI-10 local performance harness', { timeout: 30_000 }, () => {
     assert.match(production.stderr, /not present/);
   });
 
+  it('rejects repeated, missing and option-like values before runtime startup', () => {
+    for (const [args, message] of [
+      [['--profile', 'direct-mock', '--profile', 'dev'], /--profile may be selected only once/],
+      [['--workload'], /Allowed options/],
+      [['--workload', '--fixture', 'passing'], /Allowed options/],
+      [['--workload=--fixture'], /Allowed options/],
+      [['smoke'], /Allowed options/],
+    ]) {
+      const result = run(args);
+      assert.notEqual(result.status, 0, args.join(' '));
+      assert.match(result.stderr, message, args.join(' '));
+      assert.equal(result.stdout, '', args.join(' '));
+    }
+  });
+
   it('writes a sanitized summary for a passing bounded fixture run', async () => {
     const config = JSON.parse(await readFile(configPath, 'utf8'));
     const result = run(['--profile', 'direct-mock', '--workload', 'smoke', '--fixture', 'passing']);
