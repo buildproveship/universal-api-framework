@@ -11,11 +11,17 @@ then run from the repository root:
 
 ```sh
 npm ci
-npm run typecheck
-npm test
+npm run perf:install-k6   # once: the checksum-pinned k6 used by the performance tests
+npm run check
 ```
 
-Dependency installation needs access to the npm registry. After installation,
+`npm run check` is the one command that must pass before a change merges. It runs
+`typecheck` (strict TypeScript over `src`, the tests, the performance harness and
+the k6 scripts), `lint` (ESLint with type-checked typescript-eslint rules),
+`format:check` (Prettier), `npm test` and `npm run test:performance`.
+
+Dependency installation needs access to the npm registry, and the k6 install to
+GitHub releases. After installation,
 type checking and smoke execution need no remote service, credentials, environment
 variables, account, Docker, or cloud infrastructure. The only GitHub workflow is a
 manually started code-quality scan; nothing runs automatically on a pull request.
@@ -35,12 +41,12 @@ different-origin and redirect destinations before they can receive a request.
 Requests have a five-second timeout; the suite has a 15-second timeout. Runs
 use fixed fixture data and no persistent state.
 
-| Given the local synthetic API | When | Then |
-| --- | --- | --- |
-| It is listening | `GET /health` | HTTP 200, JSON, exact synthetic identity |
-| The fixed widget exists | `GET /widgets/widget-1` | HTTP 200, JSON, exact ID, name and active flag |
-| A widget does not exist | `GET /widgets/missing` | HTTP 404, unsuccessful response and exact JSON error |
-| Writes are unsupported | `POST /widgets/widget-1` | HTTP 405, unsuccessful response, `Allow: GET` and exact JSON error |
+| Given the local synthetic API | When                     | Then                                                               |
+| ----------------------------- | ------------------------ | ------------------------------------------------------------------ |
+| It is listening               | `GET /health`            | HTTP 200, JSON, exact synthetic identity                           |
+| The fixed widget exists       | `GET /widgets/widget-1`  | HTTP 200, JSON, exact ID, name and active flag                     |
+| A widget does not exist       | `GET /widgets/missing`   | HTTP 404, unsuccessful response and exact JSON error               |
+| Writes are unsupported        | `POST /widgets/widget-1` | HTTP 405, unsuccessful response, `Allow: GET` and exact JSON error |
 
 Expected HTTP errors are **passing negative scenarios**, not ignored failures.
 Status, headers and body are asserted independently, so a response merely arriving

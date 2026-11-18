@@ -6,17 +6,38 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { createK6Invocation, isolatedK6Environment } from './k6-runtime.ts';
-import { hardLimitsWithinCeilings, lifecycleRequestCount, workloadWithinLimits, type HardLimits, type Workload } from './limits.js';
+import {
+  hardLimitsWithinCeilings,
+  lifecycleRequestCount,
+  workloadWithinLimits,
+  type HardLimits,
+  type Workload,
+} from './limits.js';
 import { closeServer, listenOnLoopback } from './loopback.ts';
-import type { PlatformRuntime, Settlement, SettlementError } from './platform-runtime.ts';
+import type { PlatformRuntime } from './platform-runtime.ts';
+import { settlementOf, type Settlement } from './settlement.ts';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const configPath = path.join(projectRoot, 'performance', 'config', 'profiles.json');
 interface Profile {
-  enabled: boolean; blockedReason?: string; environment: string; mockBoundaries: string; workloads: string[];
+  enabled: boolean;
+  blockedReason?: string;
+  environment: string;
+  mockBoundaries: string;
+  workloads: string[];
 }
-interface PerformanceConfig { hardLimits: HardLimits; profiles: Record<string, Profile | undefined>; workloads: Record<string, Workload | undefined> }
-interface Selection { profile: string; workload: string; fixture: string; 'platform-root'?: string; 'platform-image'?: string }
+interface PerformanceConfig {
+  hardLimits: HardLimits;
+  profiles: Record<string, Profile | undefined>;
+  workloads: Record<string, Workload | undefined>;
+}
+interface Selection {
+  profile: string;
+  workload: string;
+  fixture: string;
+  'platform-root'?: string;
+  'platform-image'?: string;
+}
 type FixtureMode = 'passing' | 'failing' | 'redirecting';
 // Untrusted until validateConfiguration() has run.
 const config = JSON.parse(await readFile(configPath, 'utf8')) as PerformanceConfig;
@@ -24,7 +45,9 @@ const config = JSON.parse(await readFile(configPath, 'utf8')) as PerformanceConf
 interface RunSummary {
   metrics: { requestCount: number | null };
   platform?: Awaited<ReturnType<PlatformRuntime['evidence']>>;
-  runStatus?: string; runExitCode?: number; cleanup?: Settlement | { complete: false };
+  runStatus?: string;
+  runExitCode?: number;
+  cleanup?: Settlement | { complete: false };
   [field: string]: unknown;
 }
 const k6Path = path.join(projectRoot, '.tools', 'k6', 'k6');
@@ -32,7 +55,8 @@ const workloadPath = path.join(projectRoot, 'performance', 'workload.js');
 const k6ConfigPath = path.join(projectRoot, 'performance', 'config', 'k6-isolated.json');
 const summaryDirectory = path.join(projectRoot, '.performance-results');
 const allowedOptions = ['profile', 'workload', 'fixture', 'platform-root', 'platform-image'] as const;
-const optionError = 'Allowed options are --profile, --workload, --fixture, --platform-root, and --platform-image with configured values only.';
+const optionError =
+  'Allowed options are --profile, --workload, --fixture, --platform-root, and --platform-image with configured values only.';
 
 function parseArguments(args: string[]): Selection {
   let parsed: Partial<Record<string, string[]>>;
@@ -42,7 +66,7 @@ function parseArguments(args: string[]): Selection {
       strict: true,
       allowPositionals: false,
       options: Object.fromEntries(allowedOptions.map((name) => [name, { type: 'string' as const, multiple: true }])),
-    }).values as Partial<Record<string, string[]>>;
+    }).values;
   } catch {
     throw new Error(optionError);
   }
@@ -89,7 +113,8 @@ function getRevision() {
 
 function verifyK6() {
   const result = spawnSync(k6Path, ['version', '--log-output=stderr'], {
-    encoding: 'utf8', env: isolatedK6Environment(),
+    encoding: 'utf8',
+    env: isolatedK6Environment(),
   });
 
   if (result.error || result.status !== 0 || !result.stdout.startsWith('k6 v0.54.0')) {
@@ -143,7 +168,9 @@ function makeRedirectDestination() {
   };
 }
 
-function runK6(environment: Record<string, string>): Promise<{ code: number; interrupted: boolean; diagnostics: string }> {
+function runK6(
+  environment: Record<string, string>,
+): Promise<{ code: number; interrupted: boolean; diagnostics: string }> {
   const invocation = createK6Invocation(environment, workloadPath, k6ConfigPath);
   const child = spawn(k6Path, invocation.args, {
     cwd: projectRoot,
@@ -152,7 +179,7 @@ function runK6(environment: Record<string, string>): Promise<{ code: number; int
   });
   let diagnostics = '';
   child.stderr.setEncoding('utf8');
-  child.stderr.on('data', (chunk) => {
+  child.stderr.on('data', (chunk: string) => {
     if (diagnostics.length < 8192) {
       diagnostics += chunk.slice(0, 8192 - diagnostics.length);
     }
@@ -162,19 +189,45 @@ function runK6(environment: Record<string, string>): Promise<{ code: number; int
     interrupted = true;
     child.kill(signal);
   };
-  const onInterrupt = () => forwardSignal('SIGINT');
-  const onTerminate = () => forwardSignal('SIGTERM');
+  const onInterrupt = () => {
+    forwardSignal('SIGINT');
+  };
+  const onTerminate = () => {
+    forwardSignal('SIGTERM');
+  };
   process.once('SIGINT', onInterrupt);
   process.once('SIGTERM', onTerminate);
 
   return new Promise((resolve, reject) => {
-    child.once('error', () => reject(new Error('Could not start the pinned k6 process.')));
+    child.once('error', () => {
+      reject(new Error('Could not start the pinned k6 process.'));
+    });
     child.once('close', (code) => {
       process.removeListener('SIGINT', onInterrupt);
       process.removeListener('SIGTERM', onTerminate);
       resolve({ code: code ?? 1, interrupted, diagnostics });
     });
   });
+}
+
+/** Closes everything the run owns. Never throws: a cleanup failure is returned with any evidence. */
+async function releaseRuntime(
+  platform: PlatformRuntime | undefined,
+  servers: (Server | undefined)[],
+): Promise<{ cleanup?: Settlement | undefined; error?: unknown }> {
+  let cleanup: Settlement | undefined;
+  try {
+    if (platform) {
+      cleanup = await platform.close();
+      if (!cleanup.settled || !cleanup.gracefulStopVerified) {
+        throw new Error('Owned Platform runtime cleanup did not prove graceful settlement.');
+      }
+    }
+    await Promise.all(servers.flatMap((server) => (server ? [closeServer(server)] : [])));
+    return { cleanup };
+  } catch (error) {
+    return { cleanup: settlementOf(error) ?? cleanup, error };
+  }
 }
 
 async function main() {
@@ -192,7 +245,9 @@ async function main() {
 
   const isDev = selection.profile === 'dev';
   if (isDev && (!selection['platform-root'] || !selection['platform-image'])) {
-    throw new Error('Dev requires --platform-root at the pinned revision and --platform-image with verified source labels. No runtime was started.');
+    throw new Error(
+      'Dev requires --platform-root at the pinned revision and --platform-image with verified source labels. No runtime was started.',
+    );
   }
   if (!isDev && (selection['platform-root'] || selection['platform-image'])) {
     throw new Error('Platform settings are accepted only by the owned Dev profile.');
@@ -200,8 +255,9 @@ async function main() {
   if (!config.workloads[selection.workload] || !selectedProfile.workloads.includes(selection.workload)) {
     throw new Error('Workload is not present in the selected versioned performance profile.');
   }
-  const fixtureMode = (isDev ? ['passing', 'failing'] : ['passing', 'failing', 'redirecting'] as const)
-    .find((mode): mode is FixtureMode => mode === selection.fixture);
+  const fixtureMode = (isDev ? ['passing', 'failing'] : (['passing', 'failing', 'redirecting'] as const)).find(
+    (mode): mode is FixtureMode => mode === selection.fixture,
+  );
   if (!fixtureMode) {
     throw new Error('Fixture mode is not supported by the selected profile.');
   }
@@ -216,8 +272,11 @@ async function main() {
   const summaryName = `${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}.json`;
   const summaryPath = path.join(summaryDirectory, summaryName);
   const controller = new AbortController();
-  let interrupted = false;
-  const interrupt = () => { interrupted = true; controller.abort(); };
+  // Aborted only by SIGINT/SIGTERM. A function, so each read sees the live state.
+  const interrupt = () => {
+    controller.abort();
+  };
+  const isInterrupted = () => controller.signal.aborted;
   process.once('SIGINT', interrupt);
   process.once('SIGTERM', interrupt);
   let platform: PlatformRuntime | undefined;
@@ -266,7 +325,7 @@ async function main() {
       // Child diagnostics may contain runtime data. Never persist or echo them.
       throw new Error(`k6 exited with code ${result.code}; no sanitized summary was produced.`);
     }
-    if (platform && !interrupted) {
+    if (platform && !isInterrupted()) {
       const evidence = await platform.evidence();
       summary.platform = evidence;
       if (!(evidence.matchedLoginRequests > 0) || evidence.unmatchedRequests !== 0 || !evidence.noDefaultRoute) {
@@ -275,43 +334,30 @@ async function main() {
     }
   } catch (error) {
     failure = error;
-    cleanup = (error as SettlementError | undefined)?.settlement ?? cleanup;
+    cleanup = settlementOf(error) ?? cleanup;
   } finally {
-    try {
-      if (platform) {
-        cleanup = await platform.close();
-        if (!cleanup?.settled || !cleanup?.gracefulStopVerified) {
-          throw new Error('Owned Platform runtime cleanup did not prove graceful settlement.');
-        }
-      }
-      await Promise.all([
-        fixture ? closeServer(fixture) : undefined,
-        redirectDestination ? closeServer(redirectDestination.server) : undefined,
-      ]);
-    } catch (error) {
-      cleanup = (error as SettlementError | undefined)?.settlement ?? cleanup;
-      failure ??= error;
-    }
+    const released = await releaseRuntime(platform, [fixture, redirectDestination?.server]);
+    cleanup = released.cleanup ?? cleanup;
+    failure ??= released.error;
     process.removeListener('SIGINT', interrupt);
     process.removeListener('SIGTERM', interrupt);
   }
-  const exitCode = interrupted || result?.interrupted ? 130 : failure ? 1 : result?.code ?? 1;
+  const interrupted = isInterrupted();
+  const exitCode = interrupted || result?.interrupted ? 130 : failure ? 1 : (result?.code ?? 1);
   const outcome = exitCode === 130 ? 'cancelled' : exitCode === 0 ? 'passed' : 'failed';
-  if (!summary) {
-    summary = {
-      schemaVersion: 1,
-      codeRevision: revision.revision,
-      workingTreeDirty: revision.dirty,
-      k6Version,
-      environment: selectedProfile.environment,
-      profile: selection.profile,
-      workload: selection.workload,
-      mockBoundaries: selectedProfile.mockBoundaries,
-      phase: k6Started ? 'execution' : 'startup',
-      metrics: { requestCount: k6Started ? null : 0 },
-      failureCode: interrupted ? 'cancelled' : 'runtime_or_summary_unavailable',
-    };
-  }
+  summary ??= {
+    schemaVersion: 1,
+    codeRevision: revision.revision,
+    workingTreeDirty: revision.dirty,
+    k6Version,
+    environment: selectedProfile.environment,
+    profile: selection.profile,
+    workload: selection.workload,
+    mockBoundaries: selectedProfile.mockBoundaries,
+    phase: k6Started ? 'execution' : 'startup',
+    metrics: { requestCount: k6Started ? null : 0 },
+    failureCode: interrupted ? 'cancelled' : 'runtime_or_summary_unavailable',
+  };
   {
     summary.runStatus = outcome;
     summary.runExitCode = exitCode;
@@ -319,14 +365,14 @@ async function main() {
     await writeFile(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
     console.log(
       `${isDev ? 'Owned Platform Dev' : 'Direct mock-only'} ${selection.workload} ${outcome} with ${summary.metrics.requestCount ?? 'unknown'} requests; ` +
-      `summary: ${path.relative(projectRoot, summaryPath)}`,
+        `summary: ${path.relative(projectRoot, summaryPath)}`,
     );
   }
   process.exitCode = exitCode;
-  if (failure) throw failure;
+  if (failure) throw failure instanceof Error ? failure : new Error('Local performance harness failed.');
 }
 
-main().catch((error) => {
+main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : 'Local performance harness failed.');
-  process.exitCode ||= 1;
+  process.exitCode ??= 1;
 });

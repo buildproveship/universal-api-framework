@@ -11,8 +11,13 @@ import { startSyntheticApi } from './fixtures/synthetic-api.js';
 
 // Synthetic test settings only; these are not product limits or supported-version promises.
 const policy: PreflightPolicy = {
-  maxBytes: 16_384, maxDepth: 20, maxNodes: 500, maxReferences: 10,
-  timeoutMs: 5_000, workerHeapMb: 32, workerStackMb: 4,
+  maxBytes: 16_384,
+  maxDepth: 20,
+  maxNodes: 500,
+  maxReferences: 10,
+  timeoutMs: 5_000,
+  workerHeapMb: 32,
+  workerStackMb: 4,
   allowedOpenApiVersions: ['3.0.3', '3.1.0'],
 };
 const valid = '{"openapi":"3.0.3","info":{"title":"Synthetic","version":"1"},"paths":{}}';
@@ -20,7 +25,7 @@ const valid = '{"openapi":"3.0.3","info":{"title":"Synthetic","version":"1"},"pa
 async function rejected(source: string, code: FailureCode, overrides = {}, format: 'json' | 'yaml' = 'yaml') {
   const result = await preflight(source, format, { ...policy, ...overrides });
   assert.equal(result.status, 'rejected');
-  if (result.status === 'rejected') assert.equal(result.code, code);
+  assert.equal(result.code, code);
   return result;
 }
 
@@ -39,16 +44,23 @@ describe('Inactive synthetic contract intake preflight', () => {
         else Object.defineProperty(configured, key, { value: 1, enumerable: false });
         const result = await preflight(source, 'yaml', configured);
         assert.equal(result.status, 'rejected');
-        if (result.status === 'rejected') assert.equal(result.code, code);
+        assert.equal(result.code, code);
       }
     }
   });
 
   it('Given unsafe runtime resources, then isolated callers survive and receive a policy rejection', () => {
     for (const mode of ['bad-heap', 'below-heap-floor', 'bad-stack', 'below-stack-floor']) {
-      const child = spawnSync(process.execPath, [fileURLToPath(new URL('./fixtures/intake-resource-probe.js', import.meta.url)), mode], {
-        encoding: 'utf8', timeout: 20_000, killSignal: 'SIGKILL', maxBuffer: 16_384,
-      });
+      const child = spawnSync(
+        process.execPath,
+        [fileURLToPath(new URL('./fixtures/intake-resource-probe.js', import.meta.url)), mode],
+        {
+          encoding: 'utf8',
+          timeout: 20_000,
+          killSignal: 'SIGKILL',
+          maxBuffer: 16_384,
+        },
+      );
       assert.equal(child.error, undefined);
       assert.equal(child.status, 0, `mode=${mode} status=${child.status} signal=${child.signal}`);
       assert.deepEqual(JSON.parse(child.stdout), { status: 'rejected', code: 'policy-required' });
@@ -57,28 +69,46 @@ describe('Inactive synthetic contract intake preflight', () => {
 
   it('Given resource floors and parser heap exhaustion, then the isolated caller survives and can recover', () => {
     for (const mode of ['minimum', 'heap-pressure']) {
-      const child = spawnSync(process.execPath, [fileURLToPath(new URL('./fixtures/intake-resource-probe.js', import.meta.url)), mode], {
-        encoding: 'utf8', timeout: 20_000, killSignal: 'SIGKILL', maxBuffer: 16_384,
-      });
+      const child = spawnSync(
+        process.execPath,
+        [fileURLToPath(new URL('./fixtures/intake-resource-probe.js', import.meta.url)), mode],
+        {
+          encoding: 'utf8',
+          timeout: 20_000,
+          killSignal: 'SIGKILL',
+          maxBuffer: 16_384,
+        },
+      );
       assert.equal(child.error, undefined);
       assert.equal(child.status, 0, `mode=${mode} status=${child.status} signal=${child.signal}`);
-      const output = JSON.parse(child.stdout);
+      const output = JSON.parse(child.stdout) as { status?: string; result?: unknown; recovery?: { status?: string } };
       if (mode === 'minimum') assert.equal(output.status, 'preflight-passed');
       else {
         assert.deepEqual(output.result, { status: 'rejected', code: 'worker-failed' });
-        assert.equal(output.recovery.status, 'preflight-passed');
+        assert.equal(output.recovery?.status, 'preflight-passed');
       }
     }
   });
 
   it('Given configuration accessors, then each value is read once into validated plain data', async () => {
     let reads = 0;
-    const configured = { ...policy, get maxNodes() { reads++; return reads === 1 ? 1 : 500; } };
+    const configured = {
+      ...policy,
+      get maxNodes() {
+        reads++;
+        return reads === 1 ? 1 : 500;
+      },
+    };
     const result = await preflight(valid, 'json', configured);
     assert.equal(reads, 1);
     assert.equal(result.status, 'rejected');
-    if (result.status === 'rejected') assert.equal(result.code, 'nodes-exceeded');
-    const throwing = { ...policy, get maxNodes(): number { throw new Error('synthetic private configuration'); } };
+    assert.equal(result.code, 'nodes-exceeded');
+    const throwing = {
+      ...policy,
+      get maxNodes(): number {
+        throw new Error('synthetic private configuration');
+      },
+    };
     assert.deepEqual(await preflight(valid, 'json', throwing), { status: 'rejected', code: 'policy-required' });
   });
 
@@ -87,20 +117,36 @@ describe('Inactive synthetic contract intake preflight', () => {
       await rejected(JSON.stringify({ openapi: '3.0.3', a: { $ref: ref } }), 'reference-unsupported');
     }
     for (const ref of ['#/a%20b', '#/a%23b', '#/%C3%A9', '#/a~1b', '#/a?b', '#/a%0Ab']) {
-      assert.equal((await preflight(JSON.stringify({ openapi: '3.0.3', a: { $ref: ref } }), 'json', policy)).status, 'preflight-passed');
+      assert.equal(
+        (await preflight(JSON.stringify({ openapi: '3.0.3', a: { $ref: ref } }), 'json', policy)).status,
+        'preflight-passed',
+      );
     }
   });
   it('Given JSON and YAML, when preflight passes, then schema and execution approval stay false', async () => {
-    for (const [source, format] of [[valid, 'json'], ['openapi: 3.1.0\npaths: {}', 'yaml']] as const) {
+    for (const [source, format] of [
+      [valid, 'json'],
+      ['openapi: 3.1.0\npaths: {}', 'yaml'],
+    ] as const) {
       assert.deepEqual(await preflight(source, format, policy), {
-        status: 'preflight-passed', schemaValidated: false, executionAuthorized: false,
+        status: 'preflight-passed',
+        schemaValidated: false,
+        executionAuthorized: false,
       });
     }
   });
 
   it('Given missing or invalid policy, when called, then it fails closed', async () => {
     assert.deepEqual(await preflight(valid, 'json'), { status: 'rejected', code: 'policy-required' });
-    for (const key of ['maxBytes', 'maxDepth', 'maxNodes', 'maxReferences', 'timeoutMs', 'workerHeapMb', 'workerStackMb']) {
+    for (const key of [
+      'maxBytes',
+      'maxDepth',
+      'maxNodes',
+      'maxReferences',
+      'timeoutMs',
+      'workerHeapMb',
+      'workerStackMb',
+    ]) {
       for (const value of [undefined, 0, -1, 0.5, Infinity, NaN]) {
         await rejected(valid, 'policy-required', { [key]: value });
       }
@@ -112,7 +158,10 @@ describe('Inactive synthetic contract intake preflight', () => {
 
   it('Given UTF-8 multibyte input, when bytes exceed the explicit limit, then it rejects before parsing', async () => {
     await rejected('éé', 'bytes-exceeded', { maxBytes: 3 });
-    assert.equal((await preflight(valid, 'json', { ...policy, maxBytes: Buffer.byteLength(valid) })).status, 'preflight-passed');
+    assert.equal(
+      (await preflight(valid, 'json', { ...policy, maxBytes: Buffer.byteLength(valid) })).status,
+      'preflight-passed',
+    );
     await rejected(valid, 'bytes-exceeded', { maxBytes: Buffer.byteLength(valid) - 1 });
   });
 
@@ -133,16 +182,30 @@ describe('Inactive synthetic contract intake preflight', () => {
 
   it('Given YAML tags, anchors, aliases, merge keys or non-JSON values, when parsed, then no expansion is allowed', async () => {
     for (const source of [
-      'openapi: 3.0.3\na: !!str secret', 'openapi: 3.0.3\na: !custom secret',
-      'openapi: 3.0.3\na: &a [1]\nb: *a', 'openapi: 3.0.3\na: *missing',
-      'openapi: 3.0.3\na: {<<: {b: 1}}', 'openapi: 3.0.3\na: .inf',
-      'openapi: 3.0.3\n? [a, b]\n: c', '%YAML 1.1\n---\nopenapi: 3.0.3',
-    ]) await rejected(source, 'unsupported-yaml');
+      'openapi: 3.0.3\na: !!str secret',
+      'openapi: 3.0.3\na: !custom secret',
+      'openapi: 3.0.3\na: &a [1]\nb: *a',
+      'openapi: 3.0.3\na: *missing',
+      'openapi: 3.0.3\na: {<<: {b: 1}}',
+      'openapi: 3.0.3\na: .inf',
+      'openapi: 3.0.3\n? [a, b]\n: c',
+      '%YAML 1.1\n---\nopenapi: 3.0.3',
+    ])
+      await rejected(source, 'unsupported-yaml');
   });
 
   it('Given any external or unsupported reference form, when inspected, then it is rejected as data', async () => {
-    for (const ref of ['https://example.invalid/private', '//example.invalid/x', 'file:///private', '../other.yaml',
-      '/tmp/file', 'data:text/plain,test', '#anchor', '#/bad~2', '#/%zz']) {
+    for (const ref of [
+      'https://example.invalid/private',
+      '//example.invalid/x',
+      'file:///private',
+      '../other.yaml',
+      '/tmp/file',
+      'data:text/plain,test',
+      '#anchor',
+      '#/bad~2',
+      '#/%zz',
+    ]) {
       await rejected(JSON.stringify({ openapi: '3.0.3', components: { $ref: ref } }), 'reference-unsupported');
     }
     for (const key of ['$id', '$anchor', '$dynamicAnchor', '$dynamicRef', '$recursiveRef', '$recursiveAnchor']) {
@@ -161,7 +224,10 @@ describe('Inactive synthetic contract intake preflight', () => {
     try {
       const document = { openapi: '3.0.3', servers: [{ url: target.origin }], paths: {} };
       assert.equal((await preflight(JSON.stringify(document), 'json', policy)).status, 'preflight-passed');
-      await rejected(JSON.stringify({ ...document, components: { $ref: target.origin + '/health' } }), 'reference-unsupported');
+      await rejected(
+        JSON.stringify({ ...document, components: { $ref: target.origin + '/health' } }),
+        'reference-unsupported',
+      );
       assert.equal(target.requestCount, 0);
     } finally {
       await target.close();
@@ -169,7 +235,8 @@ describe('Inactive synthetic contract intake preflight', () => {
   });
 
   it('Given missing, wrongly typed or unselected versions and invalid roots, then it fails closed', async () => {
-    for (const source of ['{}', 'openapi: 3.2.0', 'openapi: 3', 'openapi: {x: 1}']) await rejected(source, 'version-not-allowed');
+    for (const source of ['{}', 'openapi: 3.2.0', 'openapi: 3', 'openapi: {x: 1}'])
+      await rejected(source, 'version-not-allowed');
     for (const source of ['', '[]', 'null', 'hello']) await rejected(source, 'root-invalid');
   });
 

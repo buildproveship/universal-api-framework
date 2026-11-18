@@ -6,12 +6,20 @@ export function isolatedK6Environment(): NodeJS.ProcessEnv {
 }
 
 export function createK6Invocation(
-  environment: Record<string, string>, workloadPath: string, configPath: string,
+  environment: Record<string, string>,
+  workloadPath: string,
+  configPath: string,
 ): { args: string[]; env: NodeJS.ProcessEnv } {
   const allowed = new Set([
-    'PERF_TARGET', 'PERF_OWNED_PORT', 'PERF_WORKLOAD', 'PERF_REVISION',
-    'PERF_WORKTREE_DIRTY', 'PERF_K6_VERSION', 'PERF_SUMMARY_PATH',
-    'PERF_PROFILE', 'PERF_EXPECT_FAILURE',
+    'PERF_TARGET',
+    'PERF_OWNED_PORT',
+    'PERF_WORKLOAD',
+    'PERF_REVISION',
+    'PERF_WORKTREE_DIRTY',
+    'PERF_K6_VERSION',
+    'PERF_SUMMARY_PATH',
+    'PERF_PROFILE',
+    'PERF_EXPECT_FAILURE',
   ]);
   const environmentArguments = Object.entries(environment).flatMap(([key, value]) => {
     if (!allowed.has(key)) throw new Error('Unsupported internal k6 runtime setting.');
@@ -19,11 +27,19 @@ export function createK6Invocation(
   });
   return {
     args: [
-      'run', '--quiet', '--config', configPath,
-      '--no-usage-report', '--no-thresholds=false', '--no-summary=false',
-      '--include-system-env-vars=false', '--traces-output=none',
-      '--log-output=stderr', '--address=',
-      ...environmentArguments, workloadPath,
+      'run',
+      '--quiet',
+      '--config',
+      configPath,
+      '--no-usage-report',
+      '--no-thresholds=false',
+      '--no-summary=false',
+      '--include-system-env-vars=false',
+      '--traces-output=none',
+      '--log-output=stderr',
+      '--address=',
+      ...environmentArguments,
+      workloadPath,
     ],
     env: isolatedK6Environment(),
   };

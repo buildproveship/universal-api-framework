@@ -5,7 +5,17 @@ import { isMap, isNode, isScalar, isSeq, type Document } from 'yaml';
 import { reject, type SchemaValidationResult } from './preflight.js';
 
 // OAS 3.0 Components Object: these map keys must match COMPONENT_NAME.
-const COMPONENT_MAPS = ['schemas', 'responses', 'parameters', 'examples', 'requestBodies', 'headers', 'securitySchemes', 'links', 'callbacks'] as const;
+const COMPONENT_MAPS = [
+  'schemas',
+  'responses',
+  'parameters',
+  'examples',
+  'requestBodies',
+  'headers',
+  'securitySchemes',
+  'links',
+  'callbacks',
+] as const;
 const COMPONENT_NAME = /^[a-zA-Z0-9._-]+$/;
 const ARRAY_INDEX = /^(0|[1-9][0-9]*)$/;
 const INVALID_ESCAPE = /~(?![01])/;
@@ -39,7 +49,9 @@ export async function validateParsedDocument(doc: Document.Parsed): Promise<Sche
     if (referenceFailure) return reject(referenceFailure);
     // Validate reference placement before the resolver can replace objects.
     // Use the same maintained OAS schema/options as the pinned validator.
-    const validate = new AjvDraft4.default({ allErrors: true, strict: false, validateFormats: false }).compile(openapiV3);
+    const validate = new AjvDraft4.default({ allErrors: true, strict: false, validateFormats: false }).compile(
+      openapiV3,
+    );
     if (!validate(original)) return reject('document-schema-invalid', sourceOffset(doc, { details: validate.errors }));
     const resolved = await parser.dereference(original as Parameters<typeof parser.dereference>[0], {
       parse: { json: false, yaml: false, text: false, binary: false },
@@ -51,8 +63,11 @@ export async function validateParsedDocument(doc: Document.Parsed): Promise<Sche
     if (!componentNamesValid(resolved)) return reject('document-schema-invalid');
     if (!validate(resolved)) return reject('document-schema-invalid', sourceOffset(doc, { details: validate.errors }));
     return {
-      status: 'document-schema-passed', documentSchemaValidated: true,
-      specificationConformanceValidated: false, importApproved: false, executionAuthorized: false,
+      status: 'document-schema-passed',
+      documentSchemaValidated: true,
+      specificationConformanceValidated: false,
+      importApproved: false,
+      executionAuthorized: false,
     };
   } catch (error) {
     // Use resolver state, never source-bearing exception text.
@@ -74,9 +89,9 @@ function record(value: unknown): value is Record<string, unknown> {
 function componentNamesValid(root: unknown): boolean {
   if (!record(root) || !record(root.components)) return true;
   const components = root.components;
-  return COMPONENT_MAPS.every(field => {
+  return COMPONENT_MAPS.every((field) => {
     const entries = components[field];
-    return !record(entries) || Object.keys(entries).every(key => COMPONENT_NAME.test(key));
+    return !record(entries) || Object.keys(entries).every((key) => COMPONENT_NAME.test(key));
   });
 }
 
@@ -111,9 +126,10 @@ function strictReferences(root: unknown): 'document-schema-invalid' | 'reference
 
 function sourceOffset(doc: Document.Parsed, error: unknown): number | undefined {
   if (!error || typeof error !== 'object' || !('details' in error) || !Array.isArray(error.details)) return undefined;
-  for (const detail of error.details) {
-    if (!detail || typeof detail !== 'object' || typeof detail.instancePath !== 'string') continue;
-    const pointer: string = detail.instancePath;
+  for (const detail of error.details as unknown[]) {
+    if (!detail || typeof detail !== 'object' || !('instancePath' in detail) || typeof detail.instancePath !== 'string')
+      continue;
+    const pointer = detail.instancePath;
     if (pointer !== '' && (!pointer.startsWith('/') || INVALID_ESCAPE.test(pointer))) continue;
     const parts = pointer === '' ? [] : pointer.slice(1).split('/').map(decodePointerToken);
     let node: unknown = doc.contents;
@@ -121,8 +137,11 @@ function sourceOffset(doc: Document.Parsed, error: unknown): number | undefined 
       if (isMap(node)) {
         // The validator may have replaced this entire mapping through $ref.
         // Its derived children must not be attributed to original siblings.
-        if (node.has('$ref')) { node = undefined; break; }
-        node = node.items.find(pair => isScalar(pair.key) && pair.key.value === part)?.value;
+        if (node.has('$ref')) {
+          node = undefined;
+          break;
+        }
+        node = node.items.find((pair) => isScalar(pair.key) && pair.key.value === part)?.value;
       } else if (isSeq(node) && ARRAY_INDEX.test(part)) {
         node = node.items[Number(part)];
       } else {

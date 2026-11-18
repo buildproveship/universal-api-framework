@@ -9,6 +9,9 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc -p tsconfig.performance.json && tsc -p tsconfig.k6.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "build": "tsc",
     "test": "npm run build && node --test --test-concurrency=1 --test-reporter=spec dist/tests/*.test.js",
     "perf:install-k6": "node performance/install-k6.ts",
@@ -18,13 +21,19 @@
     "perf:dev": "node performance/run.ts --profile dev --workload dev-smoke",
     "test:performance": "node --test --test-concurrency=1 --test-reporter=spec tests/performance/*.test.ts",
     "perf:dev:fixture-fail": "node performance/run.ts --profile dev --workload dev-smoke --fixture failing",
-    "perf:dev:baseline": "node performance/run.ts --profile dev --workload dev-baseline"
+    "perf:dev:baseline": "node performance/run.ts --profile dev --workload dev-baseline",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run test:performance"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@types/k6": "0.54.2",
     "@types/node": "22.19.0",
+    "eslint": "10.15.0",
+    "globals": "17.14.0",
     "openapi-types": "12.1.3",
-    "typescript": "5.9.3"
+    "prettier": "3.10.1",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.73.0"
   },
   "dependencies": {
     "@apidevtools/openapi-schemas": "2.1.0",

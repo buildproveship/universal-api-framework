@@ -1,0 +1,5 @@
+dist/
+.tools/
+.performance-results/
+package-lock.json
+.claude/

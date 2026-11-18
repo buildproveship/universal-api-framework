@@ -49,9 +49,16 @@ export function hardLimitsWithinCeilings(limits) {
  */
 export function workloadWithinLimits(workload, limits, lifecycleRequests = 0) {
   if (workload === null || typeof workload !== 'object') return false;
-  const { vus, ratePerSecond, durationSeconds, requestTimeoutMilliseconds, maxRequests } = /** @type {Partial<Record<keyof Workload, unknown>>} */ (workload);
+  const { vus, ratePerSecond, durationSeconds, requestTimeoutMilliseconds, maxRequests } =
+    /** @type {Partial<Record<keyof Workload, unknown>>} */ (workload);
   const positive = (/** @type {unknown} */ value) => typeof value === 'number' && Number.isInteger(value) && value > 0;
-  if (!positive(vus) || !positive(ratePerSecond) || !positive(durationSeconds) || !positive(requestTimeoutMilliseconds) || !positive(maxRequests)) {
+  if (
+    !positive(vus) ||
+    !positive(ratePerSecond) ||
+    !positive(durationSeconds) ||
+    !positive(requestTimeoutMilliseconds) ||
+    !positive(maxRequests)
+  ) {
     return false;
   }
   const w = /** @type {Workload} */ (workload);

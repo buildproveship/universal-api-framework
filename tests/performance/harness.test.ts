@@ -5,13 +5,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { spawnSync } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const runner = path.join(root, 'performance', 'run.ts');
-const configPath = path.join(root, 'performance', 'config', 'profiles.json');
+import { readProfiles, readSummary, root, runner } from './support.ts';
 
 function run(args: string[]) {
   return spawnSync(process.execPath, [runner, ...args], {
@@ -21,14 +16,14 @@ function run(args: string[]) {
 }
 
 function getSummaryPath(output: string) {
-  const match = output.match(/summary: (\.performance-results\/[0-9TZ+-]+-[0-9a-f-]+\.json)/);
+  const match = /summary: (\.performance-results\/[0-9TZ+-]+-[0-9a-f-]+\.json)/.exec(output);
   assert.ok(match?.[1], 'run output should expose only the sanitized summary path');
   return path.join(root, match[1]);
 }
 
 describe('RRDAPI-10 local performance harness', { timeout: 30_000 }, () => {
-  it('rejects unprepared Dev and arbitrary-target selections before runtime startup', async () => {
-    const config = JSON.parse(await readFile(configPath, 'utf8'));
+  it('rejects unprepared Dev and arbitrary-target selections before runtime startup', () => {
+    const config = readProfiles();
     const dev = run(['--profile', 'dev', '--workload', 'smoke']);
     const override = run(['--profile', 'direct-mock', '--target', 'https://production.example']);
     const production = run(['--profile', 'production', '--workload', 'smoke']);
@@ -64,14 +59,13 @@ describe('RRDAPI-10 local performance harness', { timeout: 30_000 }, () => {
     }
   });
 
-  it('writes a sanitized summary for a passing bounded fixture run', async () => {
-    const config = JSON.parse(await readFile(configPath, 'utf8'));
+  it('writes a sanitized summary for a passing bounded fixture run', () => {
+    const config = readProfiles();
     const result = run(['--profile', 'direct-mock', '--workload', 'smoke', '--fixture', 'passing']);
 
     assert.equal(result.status, 0, result.stderr);
     const summaryPath = getSummaryPath(result.stdout);
-    const summaryText = await readFile(summaryPath, 'utf8');
-    const summary = JSON.parse(summaryText);
+    const { text: summaryText, summary } = readSummary(summaryPath);
 
     assert.equal(summary.environment, 'direct-mock');
     assert.equal(summary.profile, 'direct-mock');
@@ -80,20 +74,20 @@ describe('RRDAPI-10 local performance harness', { timeout: 30_000 }, () => {
     assert.equal(summary.runStatus, 'passed');
     assert.equal(summary.runExitCode, 0);
     assert.equal(summary.metrics.checksFailed, 0);
-    assert.ok(summary.metrics.requestCount > 0);
+    assert.ok((summary.metrics.requestCount ?? 0) > 0);
     assert.ok(summary.metrics.throughputRequestsPerSecond > 0);
     assert.equal(summary.metrics.errorRate, 0);
     assert.deepEqual(Object.keys(summary.metrics.latencyMilliseconds), ['p50', 'p90', 'p95', 'p99']);
     assert.ok(Object.values(summary.metrics.latencyMilliseconds).every(Number.isFinite));
-    assert.ok(summary.metrics.requestCount <= config.workloads.smoke.maxRequests);
+    assert.ok((summary.metrics.requestCount ?? Infinity) <= config.workloads.smoke.maxRequests);
     assert.doesNotMatch(summaryText, /Synthetic widget|widget-1|responseBody|Authorization/);
   });
 
-  it('fails the run and records failed checks for the intentionally wrong business fixture', async () => {
+  it('fails the run and records failed checks for the intentionally wrong business fixture', () => {
     const result = run(['--profile', 'direct-mock', '--workload', 'smoke', '--fixture', 'failing']);
 
     assert.notEqual(result.status, 0);
-    const summary = JSON.parse(await readFile(getSummaryPath(result.stdout), 'utf8'));
+    const { summary } = readSummary(getSummaryPath(result.stdout));
 
     assert.equal(summary.runStatus, 'failed');
     assert.notEqual(summary.runExitCode, 0);
@@ -102,12 +96,12 @@ describe('RRDAPI-10 local performance harness', { timeout: 30_000 }, () => {
     assert.equal(summary.metrics.errorRate, 0);
   });
 
-  it('does not follow a loopback redirect to a second fixture', async () => {
+  it('does not follow a loopback redirect to a second fixture', () => {
     const result = run(['--profile', 'direct-mock', '--workload', 'smoke', '--fixture', 'redirecting']);
 
     assert.notEqual(result.status, 0);
     assert.doesNotMatch(result.stderr, /redirect destination received traffic/);
-    const summary = JSON.parse(await readFile(getSummaryPath(result.stdout), 'utf8'));
+    const { summary } = readSummary(getSummaryPath(result.stdout));
 
     assert.equal(summary.runStatus, 'failed');
     assert.notEqual(summary.runExitCode, 0);

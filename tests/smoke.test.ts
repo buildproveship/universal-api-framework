@@ -9,7 +9,7 @@ import type { SyntheticApi } from './fixtures/synthetic-api.js';
 import { createLocalHttpClient } from './http-client.js';
 
 describe('Given an owned local synthetic API', { timeout: 15_000 }, () => {
-  let api: SyntheticApi;
+  let api: SyntheticApi | undefined;
   let client: ReturnType<typeof createLocalHttpClient>;
 
   before(async () => {
