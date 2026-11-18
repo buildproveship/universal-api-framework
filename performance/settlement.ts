@@ -26,10 +26,15 @@ export interface Settlement {
 /** An error that carries sanitized cleanup evidence for the run summary. */
 export type SettlementError = Error & { settlement?: Settlement | undefined };
 
-export function withSettlement<E extends Error>(error: E, settlement: Settlement | undefined): E & SettlementError {
+export function withSettlement<E extends Error>(
+  error: E,
+  settlement: Settlement | undefined,
+): E & SettlementError {
   return Object.assign(error, { settlement });
 }
 
 export function settlementOf(error: unknown): Settlement | undefined {
-  return error instanceof Error ? (error as SettlementError).settlement : undefined;
+  return error instanceof Error
+    ? (error as SettlementError).settlement
+    : undefined;
 }

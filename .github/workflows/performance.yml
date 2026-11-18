@@ -1,0 +1,35 @@
+# Heavy suites. Owner decision of 18 Nov 2026 (docs/decisions.md): the k6 performance suites (npm run test:performance, which downloads the pinned k6) run on demand and nightly,
+# not on every pull request (the light set is in pr.yml).
+name: Performance suites
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 18 * * *" # 02:00 Hong Kong time
+permissions:
+  contents: read
+  packages: read
+concurrency:
+  group: performance-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  suites:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          registry-url: https://npm.pkg.github.com
+          scope: "@releaseready"
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install the pinned k6
+        run: npm run perf:install-k6
+      - name: Performance suites
+        run: npm run test:performance

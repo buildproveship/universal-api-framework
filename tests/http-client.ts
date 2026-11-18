@@ -8,20 +8,24 @@ export interface LocalHttpClient {
   request(input: string | URL, init?: RequestInit): Promise<Response>;
 }
 
-export function createLocalHttpClient(configuredOrigin: string): LocalHttpClient {
+export function createLocalHttpClient(
+  configuredOrigin: string,
+): LocalHttpClient {
   const allowedOrigin = new URL(configuredOrigin);
 
   if (
-    allowedOrigin.protocol !== 'http:' ||
-    allowedOrigin.hostname !== '127.0.0.1' ||
-    allowedOrigin.port === '' ||
-    allowedOrigin.username !== '' ||
-    allowedOrigin.password !== '' ||
-    allowedOrigin.pathname !== '/' ||
-    allowedOrigin.search !== '' ||
-    allowedOrigin.hash !== ''
+    allowedOrigin.protocol !== "http:" ||
+    allowedOrigin.hostname !== "127.0.0.1" ||
+    allowedOrigin.port === "" ||
+    allowedOrigin.username !== "" ||
+    allowedOrigin.password !== "" ||
+    allowedOrigin.pathname !== "/" ||
+    allowedOrigin.search !== "" ||
+    allowedOrigin.hash !== ""
   ) {
-    throw new TypeError('The configured destination must be an HTTP IPv4 loopback fixture origin.');
+    throw new TypeError(
+      "The configured destination must be an HTTP IPv4 loopback fixture origin.",
+    );
   }
 
   return {
@@ -29,18 +33,20 @@ export function createLocalHttpClient(configuredOrigin: string): LocalHttpClient
       const target = new URL(input, allowedOrigin);
 
       if (
-        target.protocol !== 'http:' ||
-        target.hostname !== '127.0.0.1' ||
+        target.protocol !== "http:" ||
+        target.hostname !== "127.0.0.1" ||
         target.origin !== allowedOrigin.origin ||
-        target.username !== '' ||
-        target.password !== ''
+        target.username !== "" ||
+        target.password !== ""
       ) {
-        throw new TypeError('Request destination is not the configured loopback fixture.');
+        throw new TypeError(
+          "Request destination is not the configured loopback fixture.",
+        );
       }
 
       return fetch(target, {
         ...init,
-        redirect: 'error',
+        redirect: "error",
         signal: init.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     },

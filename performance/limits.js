@@ -23,7 +23,7 @@ export const absoluteLimits = Object.freeze({
  * @returns {number}
  */
 export function lifecycleRequestCount(profileName) {
-  return profileName === 'dev' ? 2 : 0;
+  return profileName === "dev" ? 2 : 0;
 }
 
 /**
@@ -32,11 +32,16 @@ export function lifecycleRequestCount(profileName) {
  * @returns {limits is HardLimits}
  */
 export function hardLimitsWithinCeilings(limits) {
-  if (limits === null || typeof limits !== 'object') return false;
+  if (limits === null || typeof limits !== "object") return false;
   const configured = /** @type {Record<string, unknown>} */ (limits);
   return Object.entries(absoluteLimits).every(([name, maximum]) => {
     const value = configured[name];
-    return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= maximum;
+    return (
+      typeof value === "number" &&
+      Number.isInteger(value) &&
+      value >= 1 &&
+      value <= maximum
+    );
   });
 }
 
@@ -48,10 +53,16 @@ export function hardLimitsWithinCeilings(limits) {
  * @returns {workload is Workload}
  */
 export function workloadWithinLimits(workload, limits, lifecycleRequests = 0) {
-  if (workload === null || typeof workload !== 'object') return false;
-  const { vus, ratePerSecond, durationSeconds, requestTimeoutMilliseconds, maxRequests } =
-    /** @type {Partial<Record<keyof Workload, unknown>>} */ (workload);
-  const positive = (/** @type {unknown} */ value) => typeof value === 'number' && Number.isInteger(value) && value > 0;
+  if (workload === null || typeof workload !== "object") return false;
+  const {
+    vus,
+    ratePerSecond,
+    durationSeconds,
+    requestTimeoutMilliseconds,
+    maxRequests,
+  } = /** @type {Partial<Record<keyof Workload, unknown>>} */ (workload);
+  const positive = (/** @type {unknown} */ value) =>
+    typeof value === "number" && Number.isInteger(value) && value > 0;
   if (
     !positive(vus) ||
     !positive(ratePerSecond) ||
