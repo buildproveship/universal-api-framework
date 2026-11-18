@@ -36,7 +36,7 @@ describe('Offline OpenAPI 3.0 document-schema validation', () => {
       ['#/x-schema/a/b', { 'a/b': { type: 'string' } }, false],
       ['#/x-schema/a~1b', { 'a/b': { type: 'string' } }, true],
       ['#/x-schema/a/b', { a: { b: { type: 'string' } } }, true],
-      ['#/x-schema/__proto__', JSON.parse('{"__proto__":{"type":"string"}}'), true],
+      ['#/x-schema/__proto__', JSON.parse('{"__proto__":{"type":"string"}}') as object, true],
       ['#/x-schema/a%7E1b', { 'a/b': { type: 'string' } }, false],
       ['#/x-schema/a~01b', { 'a~1b': { type: 'string' } }, true],
       // Percent-encoded refs are explicitly outside the supported capability.
@@ -61,7 +61,7 @@ describe('Offline OpenAPI 3.0 document-schema validation', () => {
         ...document(), components: { $ref: '#/x-components' }, 'x-components': { schemas },
       }), 'json', policy);
       assert.equal(result.status, 'rejected');
-      if (result.status === 'rejected') assert.equal(result.code, 'document-schema-invalid');
+      assert.equal(result.code, 'document-schema-invalid');
     }
   });
 
@@ -97,7 +97,7 @@ describe('Offline OpenAPI 3.0 document-schema validation', () => {
         assert.deepEqual(result, { status: 'rejected', code: 'reference-unsupported' }, encoded + ':' + intendedType);
       }
     }
-    const spy = t.mock.method(SwaggerParser.prototype, 'dereference', async () => { throw new Error('must not resolve ambiguous encoding'); });
+    const spy = t.mock.method(SwaggerParser.prototype, 'dereference', () => Promise.reject(new Error('must not resolve ambiguous encoding')));
     const nested = { ...document(), 'x-schema': {
       'a%2Fb': { type: 'INVALID' }, a: { b: { type: 'string' } },
     } };
@@ -114,7 +114,7 @@ describe('Offline OpenAPI 3.0 document-schema validation', () => {
       invalid.components.schemas.Item.type = 'not-a-json-schema-type';
       const result = await validateDocumentSchema(JSON.stringify(invalid), 'json', policy);
       assert.equal(result.status, 'rejected');
-      if (result.status === 'rejected') assert.equal(result.code, 'document-schema-invalid');
+      assert.equal(result.code, 'document-schema-invalid');
     }
   });
 
@@ -126,12 +126,12 @@ describe('Offline OpenAPI 3.0 document-schema validation', () => {
     });
     const unsupported = await validateDocumentSchema(JSON.stringify(document('3.1.0')), 'json', policy);
     assert.equal(unsupported.status, 'rejected');
-    if (unsupported.status === 'rejected') assert.equal(unsupported.code, 'schema-version-unsupported');
+    assert.equal(unsupported.code, 'schema-version-unsupported');
     const future = await validateDocumentSchema(JSON.stringify(document('3.0.99')), 'json', {
       ...policy, allowedOpenApiVersions: ['3.0.99'],
     });
     assert.equal(future.status, 'rejected');
-    if (future.status === 'rejected') assert.equal(future.code, 'schema-version-unsupported');
+    assert.equal(future.code, 'schema-version-unsupported');
     assert.deepEqual(await preflight(JSON.stringify(document('3.1.0')), 'json', policy), {
       status: 'preflight-passed', schemaValidated: false, executionAuthorized: false,
     });
@@ -153,7 +153,7 @@ describe('Offline OpenAPI 3.0 document-schema validation', () => {
     } } };
     const result = await validateDocumentSchema(JSON.stringify(mutual), 'json', policy);
     assert.equal(result.status, 'rejected');
-    if (result.status === 'rejected') assert.equal(result.code, 'circular-reference-unsupported');
+    assert.equal(result.code, 'circular-reference-unsupported');
     const recursive = { ...document(), components: { schemas: {
       Node: { type: 'object', properties: { next: { $ref: '#/components/schemas/Node' } } },
     } } };
@@ -171,7 +171,7 @@ describe('Offline OpenAPI 3.0 document-schema validation', () => {
     const result = await validateDocumentSchema(JSON.stringify(invalid), 'json', policy);
     assert.equal(result.status, 'rejected');
     assert.doesNotMatch(JSON.stringify(result), /PRIVATE|private-value|components|schemas/);
-    if (result.status === 'rejected' && result.offset !== undefined) assert.ok(Number.isInteger(result.offset));
+    if (result.offset !== undefined) assert.ok(Number.isInteger(result.offset));
   });
 
   it('Given dereferenced errors, then resolved children are not attributed to original reference siblings', async () => {
@@ -180,20 +180,20 @@ describe('Offline OpenAPI 3.0 document-schema validation', () => {
     } } });
     const result = await validateDocumentSchema(source, 'json', policy);
     assert.equal(result.status, 'rejected');
-    if (result.status === 'rejected') {
+    {
       assert.equal(result.code, 'document-schema-invalid');
       assert.notEqual(result.offset, source.indexOf('"string"'));
     }
   });
 
   it('Given external references, unsafe YAML or excluded versions, then the validator is never invoked', async t => {
-    const spy = t.mock.method(SwaggerParser.prototype, 'dereference', async () => { throw new Error('must not invoke'); });
+    const spy = t.mock.method(SwaggerParser.prototype, 'dereference', () => Promise.reject(new Error('must not invoke')));
     for (const ref of ['https://example.invalid/private', 'file:///synthetic-private.yaml', '../synthetic.yaml']) {
       const candidate = document();
       candidate.components.schemas.Alias.$ref = ref;
       const result = await inspectInput({ source: JSON.stringify(candidate), format: 'json', policy, mode: 'schema' });
       assert.equal(result.status, 'rejected');
-      if (result.status === 'rejected') assert.equal(result.code, 'reference-unsupported');
+      assert.equal(result.code, 'reference-unsupported');
     }
     await inspectInput({ source: 'openapi: 3.0.3\na: !!str private', format: 'yaml', policy, mode: 'schema' });
     await inspectInput({ source: JSON.stringify(document('3.1.0')), format: 'json', policy, mode: 'schema' });
@@ -205,10 +205,12 @@ describe('Offline OpenAPI 3.0 document-schema validation', () => {
     assert.deepEqual(await inspectInput({ source: JSON.stringify(document()), format: 'json', policy, mode: 'schema' }), success);
     const require = createRequire(import.meta.url);
     const root = dirname(require.resolve('@apidevtools/json-schema-ref-parser'));
-    const parsers = ['json', 'yaml', 'text', 'binary'].map(kind => require(join(root, 'parsers', kind + '.js')).default);
-    const resolvers = ['file', 'http'].map(kind => require(join(root, 'resolvers', kind + '.js')).default);
+    // The ref-parser's internal parser and resolver plugins, loaded the same way the library loads them.
+    const plugin = (path: string) => (require(join(root, path)) as { default: Record<string, () => unknown> }).default;
+    const parsers = ['json', 'yaml', 'text', 'binary'].map(kind => plugin(`parsers/${kind}.js`));
+    const resolvers = ['file', 'http'].map(kind => plugin(`resolvers/${kind}.js`));
     const denied = () => { throw new Error('document I/O forbidden'); };
-    const spies = [t.mock.method(fs.promises, 'readFile', denied), t.mock.method(fs, 'readFileSync', denied),
+    const spies: { mock: { callCount: () => number } }[] = [t.mock.method(fs.promises, 'readFile', denied), t.mock.method(fs, 'readFileSync', denied),
       t.mock.method(http, 'request', denied), t.mock.method(https, 'request', denied), t.mock.method(globalThis, 'fetch', denied)];
     for (const parser of parsers) spies.push(t.mock.method(parser, 'parse', denied));
     for (const resolver of resolvers) spies.push(t.mock.method(resolver, 'read', denied));

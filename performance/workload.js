@@ -5,7 +5,23 @@ import { hardLimitsWithinCeilings, lifecycleRequestCount, workloadWithinLimits }
 
 /** @typedef {{ token?: string }} Session */
 /** @typedef {{ metrics: Record<string, { values?: Record<string, number> } | undefined>, state: { testRunDurationMs?: number } }} SummaryData */
-const profileConfig = JSON.parse(open('./config/profiles.json'));
+/**
+ * @typedef {{ enabled?: boolean, environment?: string, mockBoundaries?: string, workloads?: string[],
+ *   targetProtocol?: string, targetPort?: string, targetHostAllowlist?: string[] }} Profile
+ * @typedef {{ profiles: Partial<Record<string, Profile>>, workloads: Partial<Record<string, unknown>>, hardLimits: unknown }} ProfileConfig
+ * Response bodies are untrusted: every field is checked before use.
+ * @typedef {{ token?: unknown, expires?: unknown }} LoginBody
+ * @typedef {{ id?: unknown, active?: unknown, version?: unknown,
+ *   application?: { id?: unknown, tenantId?: unknown }, environment?: { id?: unknown, applicationId?: unknown } }} ApplicationBody
+ */
+/**
+ * @param {string} path
+ * @returns {unknown}
+ */
+function readJson(path) {
+  return JSON.parse(open(path));
+}
+const profileConfig = /** @type {ProfileConfig} */ (readJson('./config/profiles.json'));
 
 const profileName = __ENV.PERF_PROFILE || 'direct-mock';
 const profile = profileConfig.profiles[profileName];
@@ -23,11 +39,11 @@ if (!workload) {
 if (
   !['direct-mock', 'dev'].includes(profileName) ||
   !profile?.enabled ||
-  !profile.workloads.includes(workloadName) ||
+  !profile.workloads?.includes(workloadName) ||
   profile.targetProtocol !== 'http:' ||
   profile.targetPort !== (isDev ? 'ephemeral-owned-platform' : 'ephemeral-owned-fixture') ||
   !target ||
-  !profile.targetHostAllowlist.includes(target[1]) ||
+  !profile.targetHostAllowlist?.includes(target[1] ?? '') ||
   target[2] !== __ENV.PERF_OWNED_PORT ||
   String(Number(target[2])) !== target[2] ||
   Number(target[2]) < 1024 ||
@@ -38,7 +54,6 @@ if (
 }
 
 const targetOrigin = `http://${target[1]}:${target[2]}`;
-const duration = workload.durationSeconds;
 
 if (!hardLimitsWithinCeilings(profileConfig.hardLimits)) {
   throw new Error('Configured hard limits exceed absolute safety ceilings; no requests were sent.');
@@ -47,6 +62,9 @@ if (!hardLimitsWithinCeilings(profileConfig.hardLimits)) {
 if (!workloadWithinLimits(workload, profileConfig.hardLimits, lifecycleRequests)) {
   throw new Error('Configured workload exceeds a hard safety ceiling; no requests were sent.');
 }
+const { durationSeconds: duration, requestTimeoutMilliseconds } = workload;
+// Narrowed once here; handleSummary runs later in k6's summary phase.
+const { environment: profileEnvironment, mockBoundaries } = profile;
 
 const completedChecks = new Counter('business_checks');
 const applicationRequests = new Counter('application_requests');
@@ -83,7 +101,7 @@ export const options = {
 function requestOptions(route, token) {
   return {
     redirects: 0,
-    timeout: `${workload.requestTimeoutMilliseconds}ms`,
+    timeout: `${requestTimeoutMilliseconds}ms`,
     tags: { route },
     headers: {
       'Content-Type': 'application/json',
@@ -97,7 +115,7 @@ function requestOptions(route, token) {
 
 /**
  * @param {import('k6/http').RefinedResponse<'text'>} response
- * @returns {any} untrusted JSON, checked field by field below
+ * @returns {unknown} untrusted JSON, checked field by field by the caller
  */
 function jsonBody(response) {
   try { return response.json(); } catch { return null; }
@@ -107,15 +125,16 @@ export function setup() {
   if (!isDev) return {};
   const response = http.post(`${targetOrigin}/api/dev/login`,
     JSON.stringify({ user: 'developer-a' }), requestOptions('POST /api/dev/login'));
-  const body = jsonBody(response);
+  const body = /** @type {LoginBody | null} */ (jsonBody(response));
+  const token = typeof body?.token === 'string' ? body.token : undefined;
   const valid = check(response, {
     'owned Dev mocked login succeeds': (res) => res.status === 200,
     'owned Dev session has the synthetic contract': () =>
-      typeof body?.token === 'string' && /^rrdev_[0-9a-f]{64}$/.test(body.token) &&
-      Number.isFinite(body.expires),
+      token !== undefined && /^rrdev_[0-9a-f]{64}$/.test(token) &&
+      Number.isFinite(body?.expires),
   });
-  if (!valid) throw new Error('Owned Dev mocked login failed; no application workload was sent.');
-  return { token: body.token };
+  if (!valid || token === undefined) throw new Error('Owned Dev mocked login failed; no application workload was sent.');
+  return { token };
 }
 
 /** @param {Session | undefined} session */
@@ -126,7 +145,7 @@ export default function (session) {
   const response = http.get(`${targetOrigin}${route}`,
     requestOptions(isDev ? 'GET owned project configuration' : 'GET /widgets/widget-1', session?.token));
   applicationRequests.add(1);
-  const body = jsonBody(response);
+  const body = /** @type {ApplicationBody | null} */ (jsonBody(response));
   const results = check(response, {
     'application response is HTTP 200': (res) => res.status === 200,
     'application response is JSON': (res) => (res.headers['Content-Type'] || '').startsWith('application/json'),
@@ -166,10 +185,10 @@ export function handleSummary(data) {
     codeRevision: __ENV.PERF_REVISION,
     workingTreeDirty: __ENV.PERF_WORKTREE_DIRTY === 'true',
     k6Version: __ENV.PERF_K6_VERSION,
-    environment: profile.environment,
+    environment: profileEnvironment,
     profile: profileName,
     workload: workloadName,
-    mockBoundaries: profile.mockBoundaries,
+    mockBoundaries,
     metrics: {
       requestCount: requests,
       applicationRequestCount: metricValue(data, 'application_requests', 'count'),

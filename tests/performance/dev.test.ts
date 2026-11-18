@@ -8,21 +8,18 @@ import { spawnSync } from 'node:child_process';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import * as limits from '../../performance/limits.js';
-import type { HardLimits, Workload } from '../../performance/limits.js';
+import { k6, readProfiles, readSummary, root, runner, workloadPath as workload } from './support.ts';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const k6 = path.join(root, '.tools', 'k6', 'k6');
-const workload = path.join(root, 'performance', 'workload.js');
-const profiles: { hardLimits: HardLimits; workloads: Record<'smoke' | 'baseline' | 'dev-smoke' | 'dev-baseline', Workload> } =
-  JSON.parse(readFileSync(path.join(root, 'performance/config/profiles.json'), 'utf8'));
+const profiles = readProfiles();
 // The k6 script as plain script source, so it can run in a vm context with k6 stand-ins.
 const workloadSource = readFileSync(workload, 'utf8')
   .replace(/^import .*;\n/gm, '')
   .replace('export default function (session)', 'function executeWorkload(session)')
   .replace(/export (const|function) /g, '$1 ');
 interface RecordedCall { url: string; options: { headers: Record<string, string | undefined>; redirects: number } }
+/** Stand-in for k6's Counter; the workload only calls add(). */
+class FakeCounter { added = 0; add(value: number) { this.added += value; } }
 interface FakeResponse { status: number; headers: Record<string, string>; json: () => unknown }
 function inspect(profile: string, selection: string, target = 'http://127.0.0.1:45000/') {
   return spawnSync(k6, ['inspect', '--env', `PERF_PROFILE=${profile}`,
@@ -39,7 +36,9 @@ describe('Owned Platform Dev workload policy without traffic', () => {
       assert.ok(spec.maxRequests <= profiles.hardLimits.maxRequestCount);
       const result = inspect('dev', name);
       assert.equal(result.status, 0, result.stderr);
-      const options = JSON.parse(result.stdout);
+      const options = JSON.parse(result.stdout) as {
+        thresholds: { http_reqs: string[] }; scenarios: { configured_workload: { maxVUs: number } };
+      };
       assert.deepEqual(options.thresholds.http_reqs, [`count<=${spec.maxRequests}`]);
       assert.equal(options.scenarios.configured_workload.maxVUs, spec.vus);
     }
@@ -66,7 +65,7 @@ describe('Owned Platform Dev workload policy without traffic', () => {
           PERF_TARGET: 'http://127.0.0.1:45000/', PERF_OWNED_PORT: '45000', PERF_HOST: 'untrusted.invalid' },
         open: () => JSON.stringify(profiles),
         ...limits,
-        Counter: class { add() {} },
+        Counter: FakeCounter,
         check: (value: FakeResponse, checks: Record<string, (value: FakeResponse) => boolean>) => Object.values(checks).every(fn => fn(value)),
         http: {
           post(url: string, _body: unknown, options: RecordedCall['options']) {
@@ -98,7 +97,7 @@ describe('Owned Platform Dev workload policy without traffic', () => {
         __ENV: { PERF_PROFILE: 'direct-mock', PERF_WORKLOAD: 'smoke', PERF_TARGET: 'http://127.0.0.1:45000/', PERF_OWNED_PORT: '45000' },
         open: () => JSON.stringify(config),
         ...limits,
-        Counter: class { add() {} },
+        Counter: FakeCounter,
         check: () => true,
         http: { get: (url: string) => { calls.push(url); }, post: (url: string) => { calls.push(url); } },
       };
@@ -116,14 +115,14 @@ describe('Owned Platform Dev workload policy without traffic', () => {
   });
 
   it('rejects mutable image references before Docker or Platform source access', () => {
-    const result = spawnSync(process.execPath, [path.join(root, 'performance/run.ts'),
+    const result = spawnSync(process.execPath, [runner,
       '--profile', 'dev', '--workload', 'dev-smoke', '--platform-root', '/does-not-exist',
       '--platform-image', 'latest'], { cwd: root, env: {}, encoding: 'utf8', timeout: 5000 });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /immutable local image ID/);
-    const summaryPath = result.stdout.match(/summary: (\.performance-results\/[^\s]+\.json)/)?.[1];
+    const summaryPath = (/summary: (\.performance-results\/[^\s]+\.json)/.exec(result.stdout))?.[1];
     assert.ok(summaryPath, 'A pre-execution failure must retain a sanitized receipt');
-    const receipt = JSON.parse(readFileSync(path.join(root, summaryPath), 'utf8'));
+    const { summary: receipt } = readSummary(path.join(root, summaryPath));
     assert.equal(receipt.phase, 'startup');
     assert.equal(receipt.runStatus, 'failed');
     assert.equal(receipt.metrics.requestCount, 0);

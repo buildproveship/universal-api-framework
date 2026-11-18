@@ -101,7 +101,8 @@ export async function validateDocumentSchema(
 }
 
 async function runIntake(
-  source: string, format: 'json' | 'yaml', policy: PreflightPolicy | undefined,
+  // Untyped JavaScript callers can pass anything; the guards below fail closed.
+  source: unknown, format: unknown, policy: PreflightPolicy | undefined,
   mode: 'preflight' | 'schema',
 ): Promise<IntakeResult> {
   const configured = snapshotPolicy(policy);

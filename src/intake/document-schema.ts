@@ -111,9 +111,9 @@ function strictReferences(root: unknown): 'document-schema-invalid' | 'reference
 
 function sourceOffset(doc: Document.Parsed, error: unknown): number | undefined {
   if (!error || typeof error !== 'object' || !('details' in error) || !Array.isArray(error.details)) return undefined;
-  for (const detail of error.details) {
-    if (!detail || typeof detail !== 'object' || typeof detail.instancePath !== 'string') continue;
-    const pointer: string = detail.instancePath;
+  for (const detail of error.details as unknown[]) {
+    if (!detail || typeof detail !== 'object' || !('instancePath' in detail) || typeof detail.instancePath !== 'string') continue;
+    const pointer = detail.instancePath;
     if (pointer !== '' && (!pointer.startsWith('/') || INVALID_ESCAPE.test(pointer))) continue;
     const parts = pointer === '' ? [] : pointer.slice(1).split('/').map(decodePointerToken);
     let node: unknown = doc.contents;

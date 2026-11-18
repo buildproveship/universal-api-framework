@@ -3,16 +3,14 @@
 // Evidence: synthetic
 // Scope: the shared performance safety ceilings used by the Node runner and the k6 workload; it does not start k6 or a fixture.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import {
   absoluteLimits, hardLimitsWithinCeilings, lifecycleRequestCount, workloadWithinLimits,
-  type HardLimits, type Workload,
+  type HardLimits,
 } from '../../performance/limits.js';
+import { readProfiles } from './support.ts';
 
-const profiles: {
-  hardLimits: HardLimits; profiles: Record<string, { workloads: string[] }>; workloads: Record<string, Workload>;
-} = JSON.parse(readFileSync(new URL('../../performance/config/profiles.json', import.meta.url), 'utf8'));
+const profiles = readProfiles();
 const limits = { ...absoluteLimits };
 const workload = { vus: 1, ratePerSecond: 1, durationSeconds: 2, requestTimeoutMilliseconds: 1000, maxRequests: 2 };
 
@@ -21,7 +19,7 @@ describe('Shared performance safety ceilings', () => {
     assert.equal(hardLimitsWithinCeilings(profiles.hardLimits), true);
     for (const [name, profile] of Object.entries(profiles.profiles)) {
       for (const selected of profile.workloads) {
-        assert.equal(workloadWithinLimits(profiles.workloads[selected], profiles.hardLimits, lifecycleRequestCount(name)), true, selected);
+        assert.equal(workloadWithinLimits(profiles.workloads[selected as keyof typeof profiles.workloads], profiles.hardLimits, lifecycleRequestCount(name)), true, selected);
       }
     }
   });

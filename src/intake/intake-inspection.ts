@@ -30,8 +30,8 @@ export async function inspectInput({ source, format, policy, mode }: IntakeInput
   const pending: { node: unknown; depth: number }[] = [{ node: doc.contents, depth: 1 }];
   let nodes = 0;
   let references = 0;
-  while (pending.length) {
-    const { node, depth } = pending.pop()!;
+  for (let item = pending.pop(); item; item = pending.pop()) {
+    const { node, depth } = item;
     if (!isNode(node)) continue;
     const offset = node.range?.[0];
     if (++nodes > policy.maxNodes) return reject('nodes-exceeded', offset);

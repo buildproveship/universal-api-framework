@@ -20,7 +20,7 @@ const valid = '{"openapi":"3.0.3","info":{"title":"Synthetic","version":"1"},"pa
 async function rejected(source: string, code: FailureCode, overrides = {}, format: 'json' | 'yaml' = 'yaml') {
   const result = await preflight(source, format, { ...policy, ...overrides });
   assert.equal(result.status, 'rejected');
-  if (result.status === 'rejected') assert.equal(result.code, code);
+  assert.equal(result.code, code);
   return result;
 }
 
@@ -39,7 +39,7 @@ describe('Inactive synthetic contract intake preflight', () => {
         else Object.defineProperty(configured, key, { value: 1, enumerable: false });
         const result = await preflight(source, 'yaml', configured);
         assert.equal(result.status, 'rejected');
-        if (result.status === 'rejected') assert.equal(result.code, code);
+        assert.equal(result.code, code);
       }
     }
   });
@@ -62,11 +62,11 @@ describe('Inactive synthetic contract intake preflight', () => {
       });
       assert.equal(child.error, undefined);
       assert.equal(child.status, 0, `mode=${mode} status=${child.status} signal=${child.signal}`);
-      const output = JSON.parse(child.stdout);
+      const output = JSON.parse(child.stdout) as { status?: string; result?: unknown; recovery?: { status?: string } };
       if (mode === 'minimum') assert.equal(output.status, 'preflight-passed');
       else {
         assert.deepEqual(output.result, { status: 'rejected', code: 'worker-failed' });
-        assert.equal(output.recovery.status, 'preflight-passed');
+        assert.equal(output.recovery?.status, 'preflight-passed');
       }
     }
   });
@@ -77,7 +77,7 @@ describe('Inactive synthetic contract intake preflight', () => {
     const result = await preflight(valid, 'json', configured);
     assert.equal(reads, 1);
     assert.equal(result.status, 'rejected');
-    if (result.status === 'rejected') assert.equal(result.code, 'nodes-exceeded');
+    assert.equal(result.code, 'nodes-exceeded');
     const throwing = { ...policy, get maxNodes(): number { throw new Error('synthetic private configuration'); } };
     assert.deepEqual(await preflight(valid, 'json', throwing), { status: 'rejected', code: 'policy-required' });
   });

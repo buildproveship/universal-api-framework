@@ -20,7 +20,7 @@ export interface DockerContainer extends DockerResource {
   State: { Running: boolean; ExitCode: number };
   NetworkSettings: { Ports?: Record<string, PortBinding[] | null>; Networks: Record<string, unknown> };
   HostConfig: { NetworkMode: string };
-  Mounts: { Destination: string; Source: string; RW: boolean }[];
+  Mounts: { Destination: string; Source: string; RW?: boolean }[];
 }
 interface DockerNetwork extends DockerResource { Name: string; Labels: Labels; Internal: boolean; Driver: string }
 export interface OwnedResources { container: DockerContainer[]; network: DockerNetwork[]; volume: DockerResource[] }
@@ -42,24 +42,10 @@ export interface ComposeModel {
 }
 export type DockerRun = (args: string[], timeout?: number) => Promise<string>;
 export type DockerJson = <T = unknown>(args: string[]) => Promise<T>;
-export interface CleanupFailure { operation: string; reason: string }
-export interface RemainingResource { kind: string; id: string | undefined }
-export interface Settlement {
-  settled: boolean; gracefulStopVerified: boolean; project: string | undefined;
-  owner?: string | undefined; cleanupFailures?: CleanupFailure[]; cleanupFailureCount?: number;
-  remainingOwnedResources: RemainingResource[]; remainingResourcesMayBeStale?: boolean;
-  remainingResourcesKnown?: boolean; creationOutcomeUncertain: boolean; stableEmptyObservations?: number;
-}
-/** An error that carries sanitized cleanup evidence for the run summary. */
-export type SettlementError = Error & { settlement?: Settlement | undefined };
-function withSettlement<E extends Error>(error: E, settlement: Settlement | undefined): E & SettlementError {
-  return Object.assign(error, { settlement });
-}
-function settlementOf(error: unknown): Settlement | undefined {
-  return error instanceof Error ? (error as SettlementError).settlement : undefined;
-}
+import { settlementOf, withSettlement, type CleanupFailure, type Settlement } from './settlement.ts';
+export type { Settlement, SettlementError } from './settlement.ts';
 
-export const runtimeConfig: Readonly<RuntimeConfig> = Object.freeze(JSON.parse(await readFile(new URL('./config/platform-runtime.json', import.meta.url), 'utf8')));
+export const runtimeConfig: Readonly<RuntimeConfig> = Object.freeze(JSON.parse(await readFile(new URL('./config/platform-runtime.json', import.meta.url), 'utf8')) as RuntimeConfig);
 const OWNER = 'releaseready.performance.owner';
 const PROJECT = 'com.docker.compose.project';
 function check(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
@@ -70,7 +56,7 @@ const same = (a: object, b: object) => JSON.stringify(Object.entries(a).sort()) 
 export function assertImageId(image: unknown): asserts image is string { check(typeof image === 'string' && /^sha256:[a-f0-9]{64}$/.test(image), 'An immutable local image ID is required'); }
 export function assertLocalContext(context: { Endpoints?: { docker?: { Host?: unknown } } } | undefined): string {
   const host = context?.Endpoints?.docker?.Host;
-  check(typeof host === 'string' && /^unix:\/\/\//.test(host) && !host.includes('\n'), 'Only a local Unix Docker context is permitted');
+  check(typeof host === 'string' && host.startsWith('unix:///') && !host.includes('\n'), 'Only a local Unix Docker context is permitted');
   return host;
 }
 export function assertOwned(resource: DockerResource | undefined, project: string, owner: string): void {
@@ -229,7 +215,8 @@ export async function failStartupWithSettlement(
     remainingResourcesMayBeStale: !result || input.remainingResourcesMayBeStale === true,
     remainingResourcesKnown: !!result && Array.isArray(input.remainingOwnedResources),
   };
-  if (Number.isInteger(input.stableEmptyObservations)) settlement.stableEmptyObservations = input.stableEmptyObservations as number;
+  const observations = input.stableEmptyObservations;
+  if (typeof observations === 'number' && Number.isInteger(observations)) settlement.stableEmptyObservations = observations;
   if (Array.isArray(input.cleanupFailures)) settlement.cleanupFailureCount = input.cleanupFailures.length;
   if (cleanupError) {
     throw withSettlement(new AggregateError([error, cleanupError], 'Runtime failed and cleanup could not be verified'), settlement);
@@ -298,14 +285,15 @@ export async function startPlatformRuntime({ platformRoot, image, signal }: { pl
   // Freeze the selected endpoint; later context changes cannot redirect commands.
   const run: DockerRun = (args, timeout) => raw(['--host', host, ...args], timeout);
   const json: DockerJson = async <T>(args: string[]) => JSON.parse(await run(args)) as T;
-  type ImageInspect = { Id: string; RepoDigests?: string[]; Config?: { Labels?: Labels } };
+  interface ImageInspect { Id: string; RepoDigests?: string[]; Config?: { Labels?: Labels } }
   const identities = await verifySource(root, git, env);
   const appImage = (await json<ImageInspect[]>(['image', 'inspect', image]))[0];
   check(appImage?.Id === image, 'Application image mismatch');
   const labels = appImage.Config?.Labels ?? {};
   check(labels['releaseready.source.revision'] === runtimeConfig.revision && labels['releaseready.source.tree'] === runtimeConfig.tree && labels['releaseready.package-lock.sha256'] === runtimeConfig.lockSha256, 'Image source identity labels do not match');
   const mockImage = (await json<ImageInspect[]>(['image', 'inspect', runtimeConfig.wiremockImage]))[0];
-  check(mockImage && mockImage.RepoDigests?.includes(runtimeConfig.wiremockImage.replace(':3.13.2@', '@')), 'WireMock digest is unavailable locally');
+  check(mockImage, 'WireMock digest is unavailable locally');
+  check(mockImage.RepoDigests?.includes(runtimeConfig.wiremockImage.replace(':3.13.2@', '@')), 'WireMock digest is unavailable locally');
   const owner = randomUUID(), project = `rrk6-${owner}`;
   const temporary = await mkdtemp(join(tmpdir(), 'rrk6-runtime-'));
   const overlay = join(temporary, 'overlay.yaml');
@@ -354,7 +342,7 @@ export async function startPlatformRuntime({ platformRoot, image, signal }: { pl
   function onAbort() {
     shutdownError = new Error('Runtime interrupted or lifetime exceeded');
     // Await the bounded Compose creation before enumerating resources for cleanup.
-    if (!starting) void close().catch(error => { shutdownError = error; });
+    if (!starting) void close().catch((error: unknown) => { shutdownError = error; });
   }
   try {
     await writeFile(overlay, makeOverlay(owner), { mode: 0o600 });
@@ -374,7 +362,7 @@ export async function startPlatformRuntime({ platformRoot, image, signal }: { pl
     check(!shutdownError && !signal?.aborted, 'Runtime interrupted during startup');
     const owned = await resources();
     const ingress = owned.container.find(c => c.Config.Labels['com.docker.compose.service'] === 'ingress');
-    const publications = ingress?.NetworkSettings?.Ports?.['33336/tcp'];
+    const publications = ingress?.NetworkSettings.Ports?.['33336/tcp'];
     const publication = publications?.length === 1 ? publications[0] : undefined;
     check(publication?.HostIp === '127.0.0.1', 'Unsafe actual ingress publication');
     const port = Number(publication.HostPort);
@@ -384,14 +372,14 @@ export async function startPlatformRuntime({ platformRoot, image, signal }: { pl
       check(!closed && !shutdownError && !closing, 'Runtime is no longer available');
       const actual = await resources();
       check(actual.container.length === 4 && actual.network.length === 2 && actual.volume.length === 1, 'Incomplete runtime resources');
-      const services: Partial<Record<string, DockerContainer>> = Object.fromEntries(actual.container.map(c => [c.Config.Labels['com.docker.compose.service'], c]));
+      const services: Partial<Record<string, DockerContainer>> = Object.fromEntries(actual.container.map(c => [c.Config.Labels['com.docker.compose.service'] ?? '', c]));
       const { ingress: ingressService, central, wiremock, gateway } = services;
       check(ingressService && central && wiremock && gateway, 'Incomplete runtime resources');
       for (const [name, c] of Object.entries(services)) check(c?.State.Running && c.Image === (name === 'wiremock' ? mockImage.Id : image), 'Actual image or running state mismatch');
       const currentPorts = ingressService.NetworkSettings.Ports?.['33336/tcp'];
       check(currentPorts?.length === 1 && currentPorts[0]?.HostIp === '127.0.0.1' && Number(currentPorts[0].HostPort) === port, 'Actual endpoint changed');
       for (const service of [central, wiremock, gateway]) check(!Object.values(service.NetworkSettings.Ports ?? {}).some(bindings => bindings?.length), 'Unexpected actual publication');
-      const dev = actual.network.find(n => n.Labels?.['com.docker.compose.network'] === 'dev');
+      const dev = actual.network.find(n => n.Labels['com.docker.compose.network'] === 'dev');
       check(dev?.Internal === true && dev.Driver === 'bridge', 'Actual Dev network is not internal');
       for (const service of [central, wiremock]) check(service.HostConfig.NetworkMode === `container:${gateway.Id}`, 'Actual namespace is not isolated');
       check(Object.keys(gateway.NetworkSettings.Networks).length === 1 && gateway.NetworkSettings.Networks[dev.Name], 'Gateway attached to unexpected networks');

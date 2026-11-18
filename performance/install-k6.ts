@@ -149,7 +149,7 @@ async function main() {
   }
 }
 
-main().catch((error) => {
+main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : 'Pinned k6 installation failed.');
   process.exitCode = 1;
 });

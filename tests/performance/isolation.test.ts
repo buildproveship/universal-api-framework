@@ -9,19 +9,16 @@ import { createServer } from 'node:http';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { AddressInfo } from 'node:net';
 import { createK6Invocation, isolatedK6Environment } from '../../performance/k6-runtime.ts';
 import { closeServer } from '../../performance/loopback.ts';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const runner = path.join(root, 'performance', 'run.ts');
-const k6 = path.join(root, '.tools', 'k6', 'k6');
+import { k6, root, runner } from './support.ts';
 
-function isolatedRun(t: TestContext, overrides: Record<string, string> = {}, fixture = 'passing', setup: (home: string) => void = () => {}) {
+function isolatedRun(t: TestContext, overrides: Record<string, string> = {}, fixture = 'passing', setup?: (home: string) => void) {
   const home = mkdtempSync(path.join(tmpdir(), 'rrdapi-k6-isolation-'));
-  t.after(() => rmSync(home, { recursive: true, force: true }));
-  setup(home);
+  t.after(() => { rmSync(home, { recursive: true, force: true }); });
+  setup?.(home);
   const environment = {
     PATH: process.env.PATH,
     HOME: home,
@@ -58,7 +55,7 @@ describe('RRDAPI-10 child-process isolation', { timeout: 45_000 }, () => {
 
   it('ignores a parent metrics-output override', (t) => {
     const directory = mkdtempSync(path.join(tmpdir(), 'rrdapi-k6-output-'));
-    t.after(() => rmSync(directory, { recursive: true, force: true }));
+    t.after(() => { rmSync(directory, { recursive: true, force: true }); });
     const output = path.join(directory, 'unapproved-metrics.json');
     const { result } = isolatedRun(t, { K6_OUT: `json=${output}` });
     assert.equal(result.status, 0, result.stderr);
@@ -67,7 +64,7 @@ describe('RRDAPI-10 child-process isolation', { timeout: 45_000 }, () => {
 
   it('ignores a parent config-path override', (t) => {
     const directory = mkdtempSync(path.join(tmpdir(), 'rrdapi-k6-config-'));
-    t.after(() => rmSync(directory, { recursive: true, force: true }));
+    t.after(() => { rmSync(directory, { recursive: true, force: true }); });
     const output = path.join(directory, 'unapproved-config-metrics.json');
     const config = path.join(directory, 'foreign-config.json');
     writeFileSync(config, JSON.stringify({ out: [`json=${output}`], noUsageReport: true }));
@@ -98,7 +95,7 @@ describe('RRDAPI-10 child-process isolation', { timeout: 45_000 }, () => {
     const port = await new Promise<number>((resolve, reject) => {
       let candidate = 49151;
       const onError = (error: NodeJS.ErrnoException) => {
-        if (error.code !== 'EADDRINUSE' || candidate <= 49000) return reject(error);
+        if (error.code !== 'EADDRINUSE' || candidate <= 49000) { reject(error); return; }
         server.listen(--candidate, '127.0.0.1');
       };
       server.on('error', onError);

@@ -8,7 +8,8 @@ import { parseArgs } from 'node:util';
 import { createK6Invocation, isolatedK6Environment } from './k6-runtime.ts';
 import { hardLimitsWithinCeilings, lifecycleRequestCount, workloadWithinLimits, type HardLimits, type Workload } from './limits.js';
 import { closeServer, listenOnLoopback } from './loopback.ts';
-import type { PlatformRuntime, Settlement, SettlementError } from './platform-runtime.ts';
+import type { PlatformRuntime } from './platform-runtime.ts';
+import { settlementOf, type Settlement } from './settlement.ts';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const configPath = path.join(projectRoot, 'performance', 'config', 'profiles.json');
@@ -42,7 +43,7 @@ function parseArguments(args: string[]): Selection {
       strict: true,
       allowPositionals: false,
       options: Object.fromEntries(allowedOptions.map((name) => [name, { type: 'string' as const, multiple: true }])),
-    }).values as Partial<Record<string, string[]>>;
+    }).values;
   } catch {
     throw new Error(optionError);
   }
@@ -152,7 +153,7 @@ function runK6(environment: Record<string, string>): Promise<{ code: number; int
   });
   let diagnostics = '';
   child.stderr.setEncoding('utf8');
-  child.stderr.on('data', (chunk) => {
+  child.stderr.on('data', (chunk: string) => {
     if (diagnostics.length < 8192) {
       diagnostics += chunk.slice(0, 8192 - diagnostics.length);
     }
@@ -162,19 +163,38 @@ function runK6(environment: Record<string, string>): Promise<{ code: number; int
     interrupted = true;
     child.kill(signal);
   };
-  const onInterrupt = () => forwardSignal('SIGINT');
-  const onTerminate = () => forwardSignal('SIGTERM');
+  const onInterrupt = () => { forwardSignal('SIGINT'); };
+  const onTerminate = () => { forwardSignal('SIGTERM'); };
   process.once('SIGINT', onInterrupt);
   process.once('SIGTERM', onTerminate);
 
   return new Promise((resolve, reject) => {
-    child.once('error', () => reject(new Error('Could not start the pinned k6 process.')));
+    child.once('error', () => { reject(new Error('Could not start the pinned k6 process.')); });
     child.once('close', (code) => {
       process.removeListener('SIGINT', onInterrupt);
       process.removeListener('SIGTERM', onTerminate);
       resolve({ code: code ?? 1, interrupted, diagnostics });
     });
   });
+}
+
+/** Closes everything the run owns. Never throws: a cleanup failure is returned with any evidence. */
+async function releaseRuntime(
+  platform: PlatformRuntime | undefined, servers: (Server | undefined)[],
+): Promise<{ cleanup?: Settlement | undefined; error?: unknown }> {
+  let cleanup: Settlement | undefined;
+  try {
+    if (platform) {
+      cleanup = await platform.close();
+      if (!cleanup.settled || !cleanup.gracefulStopVerified) {
+        throw new Error('Owned Platform runtime cleanup did not prove graceful settlement.');
+      }
+    }
+    await Promise.all(servers.flatMap((server) => (server ? [closeServer(server)] : [])));
+    return { cleanup };
+  } catch (error) {
+    return { cleanup: settlementOf(error) ?? cleanup, error };
+  }
 }
 
 async function main() {
@@ -216,8 +236,9 @@ async function main() {
   const summaryName = `${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}.json`;
   const summaryPath = path.join(summaryDirectory, summaryName);
   const controller = new AbortController();
-  let interrupted = false;
-  const interrupt = () => { interrupted = true; controller.abort(); };
+  // Aborted only by SIGINT/SIGTERM. A function, so each read sees the live state.
+  const interrupt = () => { controller.abort(); };
+  const isInterrupted = () => controller.signal.aborted;
   process.once('SIGINT', interrupt);
   process.once('SIGTERM', interrupt);
   let platform: PlatformRuntime | undefined;
@@ -266,7 +287,7 @@ async function main() {
       // Child diagnostics may contain runtime data. Never persist or echo them.
       throw new Error(`k6 exited with code ${result.code}; no sanitized summary was produced.`);
     }
-    if (platform && !interrupted) {
+    if (platform && !isInterrupted()) {
       const evidence = await platform.evidence();
       summary.platform = evidence;
       if (!(evidence.matchedLoginRequests > 0) || evidence.unmatchedRequests !== 0 || !evidence.noDefaultRoute) {
@@ -275,30 +296,18 @@ async function main() {
     }
   } catch (error) {
     failure = error;
-    cleanup = (error as SettlementError | undefined)?.settlement ?? cleanup;
+    cleanup = settlementOf(error) ?? cleanup;
   } finally {
-    try {
-      if (platform) {
-        cleanup = await platform.close();
-        if (!cleanup?.settled || !cleanup?.gracefulStopVerified) {
-          throw new Error('Owned Platform runtime cleanup did not prove graceful settlement.');
-        }
-      }
-      await Promise.all([
-        fixture ? closeServer(fixture) : undefined,
-        redirectDestination ? closeServer(redirectDestination.server) : undefined,
-      ]);
-    } catch (error) {
-      cleanup = (error as SettlementError | undefined)?.settlement ?? cleanup;
-      failure ??= error;
-    }
+    const released = await releaseRuntime(platform, [fixture, redirectDestination?.server]);
+    cleanup = released.cleanup ?? cleanup;
+    failure ??= released.error;
     process.removeListener('SIGINT', interrupt);
     process.removeListener('SIGTERM', interrupt);
   }
+  const interrupted = isInterrupted();
   const exitCode = interrupted || result?.interrupted ? 130 : failure ? 1 : result?.code ?? 1;
   const outcome = exitCode === 130 ? 'cancelled' : exitCode === 0 ? 'passed' : 'failed';
-  if (!summary) {
-    summary = {
+  summary ??= {
       schemaVersion: 1,
       codeRevision: revision.revision,
       workingTreeDirty: revision.dirty,
@@ -310,8 +319,7 @@ async function main() {
       phase: k6Started ? 'execution' : 'startup',
       metrics: { requestCount: k6Started ? null : 0 },
       failureCode: interrupted ? 'cancelled' : 'runtime_or_summary_unavailable',
-    };
-  }
+  };
   {
     summary.runStatus = outcome;
     summary.runExitCode = exitCode;
@@ -323,10 +331,10 @@ async function main() {
     );
   }
   process.exitCode = exitCode;
-  if (failure) throw failure;
+  if (failure) throw failure instanceof Error ? failure : new Error('Local performance harness failed.');
 }
 
-main().catch((error) => {
+main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : 'Local performance harness failed.');
-  process.exitCode ||= 1;
+  process.exitCode ??= 1;
 });

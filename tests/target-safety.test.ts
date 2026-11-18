@@ -33,7 +33,7 @@ describe('Given a client configured for one owned loopback fixture', { timeout: 
     });
   });
 
-  it('When another local fixture origin is requested, then it is rejected before receiving a request', async () => {
+  it('When another local fixture origin is requested, then it is rejected before receiving a request', () => {
     const requestCountBefore = unconfiguredFixture?.requestCount;
 
     assert.throws(
@@ -54,7 +54,7 @@ describe('Given a client configured for one owned loopback fixture', { timeout: 
     assert.equal(unconfiguredFixture?.requestCount, 0);
   });
 
-  it('When a destination uses another host, address, or scheme, then it is rejected before any request', async () => {
+  it('When a destination uses another host, address, or scheme, then it is rejected before any request', () => {
     const port = new URL(fixture?.origin ?? 'http://127.0.0.1').port;
     const rejectedDestinations = [
       `http://localhost:${port}/health`,
