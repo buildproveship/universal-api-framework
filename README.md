@@ -75,8 +75,8 @@ mocked Dev results do not prove UAT or Production capacity.
 This repository currently provides TypeScript setup, readable local BDD smoke
 checks, request-boundary loopback target safety, meaningful positive/negative
 assertions, and setup documentation only.
-RRDAPI-8 remains post-MVP; **the full ticket is not complete** and still depends on
-[RRDSCRUM-53](https://noisegatemusicstudios.atlassian.net/browse/RRDSCRUM-53).
+Ticket status and outstanding work are recorded in
+[docs/history/ticket-status.md](docs/history/ticket-status.md).
 
 Shared execution contracts, the dependent execution engine, integrations,
 customer execution, credentials, provisioning, cloud setup, paid services and
@@ -150,17 +150,6 @@ the intentional synthetic exhaustion probe. Existing smoke/target-safety tests
 continue unchanged. Test files run sequentially so intentional resource-exhaustion
 probes do not compete with another suite's fixed deadlines; policy limits are not
 increased for the tests.
-
-Still required for RRDAPI-14: broader OpenAPI validation and resolved
-source-located inventory; immutable scoped persistence, original/normalized hashes,
-idempotency and version differences; authenticated access/provenance contracts;
-approved encryption, retention/deletion and redaction policies; product limits and
-supported-version decisions. None is inferred from preflight success. Review
-approval remains separate from execution permission.
-
-RRDAPI-13's selected Contract Intake visual remains a separate Copilot-owned gate.
-Its selection does not settle the outstanding product/security policies. This
-slice adds no UI and makes no visual fidelity claim.
 
 ## Offline OpenAPI 3.0 document-schema validation
 
