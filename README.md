@@ -6,12 +6,13 @@ This is not a customer API runner or evidence of customer API behavior.
 
 ## Setup and run
 
-Install the Node.js version that `package.json` `engines` requires (with npm),
-then run from the repository root:
+Install k6 0.54.0 for the performance tests (`brew install k6`, the
+[official packages](https://grafana.com/docs/k6/latest/set-up/install-k6/), or
+`grafana/setup-k6-action` in CI) and the Node.js version that `package.json`
+`engines` requires (with npm), then run from the repository root:
 
 ```sh
 npm ci
-npm run perf:install-k6   # once: the checksum-pinned k6 used by the performance tests
 npm run check
 ```
 
@@ -20,8 +21,7 @@ npm run check
 the k6 scripts), `lint` (ESLint with type-checked typescript-eslint rules),
 `format:check` (Prettier), `npm test` and `npm run test:performance`.
 
-Dependency installation needs access to the npm registry, and the k6 install to
-GitHub releases. After installation,
+Dependency installation needs access to the npm registry. After installation,
 type checking and smoke execution need no remote service, credentials, environment
 variables, account, Docker, or cloud infrastructure. The only GitHub workflow is a
 manually started code-quality scan; nothing runs automatically on a pull request.

@@ -1,4 +1,4 @@
-# Heavy suites. Owner decision of 18 Nov 2026 (docs/decisions.md): the k6 performance suites (npm run test:performance, which downloads the pinned k6) run on demand and nightly,
+# Heavy suites. Owner decision of 18 Nov 2026 (docs/decisions.md): the k6 performance suites (npm run test:performance, which needs k6 on PATH) run on demand and nightly,
 # not on every pull request (the light set is in pr.yml).
 name: Performance suites
 on:
@@ -29,7 +29,8 @@ jobs:
         run: npm ci --no-audit --no-fund
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install the pinned k6
-        run: npm run perf:install-k6
+      - uses: grafana/setup-k6-action@c47136d33d365efbeb9ae7266908b5dcf98cdece # v1.3.0
+        with:
+          k6-version: 0.54.0
       - name: Performance suites
         run: npm run test:performance

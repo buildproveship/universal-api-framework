@@ -5,6 +5,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { findK6 } from "../../performance/k6-binary.ts";
 import type { HardLimits, Workload } from "../../performance/limits.js";
 
 export const root = path.resolve(
@@ -13,7 +14,8 @@ export const root = path.resolve(
   "..",
 );
 export const runner = path.join(root, "performance", "run.ts");
-export const k6 = path.join(root, ".tools", "k6", "k6");
+/** k6 from PATH; tests that run it fail with a clear spawn error when it is missing. */
+export const k6 = findK6() ?? "k6";
 export const workloadPath = path.join(root, "performance", "workload.js");
 
 export interface ProfilesConfig {

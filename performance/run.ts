@@ -5,6 +5,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { findK6, pinnedK6Version } from "./k6-binary.ts";
 import { createK6Invocation, isolatedK6Environment } from "./k6-runtime.ts";
 import {
   hardLimitsWithinCeilings,
@@ -60,7 +61,7 @@ interface RunSummary {
   cleanup?: Settlement | { complete: false };
   [field: string]: unknown;
 }
-const k6Path = path.join(projectRoot, ".tools", "k6", "k6");
+const k6Path = findK6() ?? "k6";
 const workloadPath = path.join(projectRoot, "performance", "workload.js");
 const k6ConfigPath = path.join(
   projectRoot,
@@ -161,10 +162,10 @@ function verifyK6() {
   if (
     result.error ||
     result.status !== 0 ||
-    !result.stdout.startsWith("k6 v0.54.0")
+    !result.stdout.startsWith(`k6 v${pinnedK6Version}`)
   ) {
     throw new Error(
-      "Pinned k6 v0.54.0 is required. Install it with npm run perf:install-k6.",
+      `k6 v${pinnedK6Version} must be on PATH (brew install k6, the Grafana package, or grafana/setup-k6-action).`,
     );
   }
 

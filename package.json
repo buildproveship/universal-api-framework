@@ -4,6 +4,7 @@
   "private": true,
   "description": "Standalone local-only API smoke test scaffold",
   "type": "module",
+  "packageManager": "npm@11.4.2",
   "engines": {
     "node": ">=22.18.0"
   },
@@ -14,7 +15,6 @@
     "format:check": "prettier --check .",
     "build": "tsc",
     "test": "npm run build && node --test --test-concurrency=1 --test-reporter=spec dist/tests/*.test.js",
-    "perf:install-k6": "node performance/install-k6.ts",
     "perf:smoke": "node performance/run.ts --profile direct-mock --workload smoke --fixture passing",
     "perf:fixture-fail": "node performance/run.ts --profile direct-mock --workload smoke --fixture failing",
     "perf:baseline": "node performance/run.ts --profile direct-mock --workload baseline --fixture passing",
