@@ -1,4 +1,4 @@
-# Heavy suites. Owner decision of 18 Nov 2026 (docs/decisions.md): the k6 performance suites (npm run test:performance, which downloads the pinned k6) run on demand and nightly,
+# Heavy suites. Owner decision of 18 Nov 2026 (docs/decisions.md): the k6 performance suites (npm run test:performance, which needs k6 on PATH) run on demand and nightly,
 # not on every pull request (the light set is in pr.yml).
 name: Performance suites
 on:
@@ -29,7 +29,15 @@ jobs:
         run: npm ci --no-audit --no-fund
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install the pinned k6
-        run: npm run perf:install-k6
+      # Official Grafana apt package (https://grafana.com/docs/k6/latest/set-up/install-k6/). The repository's
+      # Actions policy allows only GitHub-owned actions, so grafana/setup-k6-action is not usable here.
+      - name: Install k6 0.54.0 from the official apt repository
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6=0.54.0*
+          k6 version
       - name: Performance suites
         run: npm run test:performance

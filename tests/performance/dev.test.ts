@@ -230,7 +230,12 @@ describe("Owned Platform Dev workload policy without traffic", () => {
         "--platform-image",
         "latest",
       ],
-      { cwd: root, env: {}, encoding: "utf8", timeout: 5000 },
+      {
+        cwd: root,
+        env: { PATH: process.env.PATH ?? "" },
+        encoding: "utf8",
+        timeout: 5000,
+      },
     );
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /immutable local image ID/);

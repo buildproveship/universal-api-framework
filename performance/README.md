@@ -15,7 +15,7 @@ workload is required for the smoke checks below.
 
 ## Direct fixture setup
 
-Use the Node.js version that `package.json` `engines` requires, and npm, in a clean
+Install k6 0.54.0 (see below) and use the Node.js version that `package.json` `engines` requires, and npm, in a clean
 API checkout. The harness is TypeScript that Node runs directly through its built-in
 type stripping (no build step); `npm run typecheck` checks it strictly with
 `tsconfig.performance.json`. `workload.js` and `limits.js` stay JavaScript because
@@ -23,7 +23,6 @@ k6 runs them; `limits.js` holds the safety ceilings that both k6 and the runner 
 
 ```sh
 npm ci
-npm run perf:install-k6
 npm run perf:smoke
 npm run perf:fixture-fail  # expected nonzero exit
 npm run test:performance
@@ -31,8 +30,8 @@ npm test
 npm run typecheck
 ```
 
-The installer supports macOS/Linux x64 and arm64, verifies the committed archive
-SHA-256, and writes only `.tools/k6/`. It does not install a global executable.
+k6 0.54.0 must be on `PATH`: `brew install k6`, the official Grafana package, or
+the official apt package in CI. The runner refuses any other version.
 The regular `npm test` suite does not require k6 or Docker. The performance
 suite uses direct fixtures and traffic-free/mocked runtime-policy tests; it does
 not start Platform containers automatically.

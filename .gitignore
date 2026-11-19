@@ -1,5 +1,4 @@
 node_modules/
 dist/
 *.tsbuildinfo
-.tools/k6/
 .performance-results/
