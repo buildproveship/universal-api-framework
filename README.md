@@ -4,6 +4,10 @@ A standalone **local-only TypeScript API smoke scaffold** for the bounded
 preparation slice of [RRDAPI-8](https://noisegatemusicstudios.atlassian.net/browse/RRDAPI-8).
 This is not a customer API runner or evidence of customer API behavior.
 
+This repository owns API testing across the ReleaseReady frameworks (native `fetch` and
+k6). [universal-playwright-framework](https://github.com/releaseready/universal-playwright-framework)
+is browser-only and has no API client.
+
 ## Setup and run
 
 Install k6 0.54.0 for the performance tests (`brew install k6`, the
