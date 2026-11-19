@@ -274,10 +274,18 @@ export function validateModel(
   );
   const data = central.volumes;
   check(
-    data?.length === 1 &&
-      data[0]?.type === "volume" &&
-      data[0].source === "data" &&
-      data[0].target === "/data",
+    data?.length === 2 &&
+      data.some(
+        (v) =>
+          v.type === "volume" && v.source === "data" && v.target === "/data",
+      ) &&
+      data.some(
+        (v) =>
+          v.type === "bind" &&
+          v.source === "/dev/null" &&
+          v.target === "/etc/code-quality/config.json" &&
+          v.read_only,
+      ),
     "Unexpected data mount",
   );
   for (const resource of [
