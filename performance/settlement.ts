@@ -5,7 +5,7 @@ export interface CleanupFailure {
   operation: string;
   reason: string;
 }
-export interface RemainingResource {
+interface RemainingResource {
   kind: string;
   id: string | undefined;
 }

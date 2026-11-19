@@ -61,7 +61,7 @@ and a named `it` assertion there, keeping all requests on the owned loopback API
 destinations and unsupported loopback/address forms receive no requests. Do not
 introduce a customer or remote target.
 
-## Local k6 performance harness (RRDAPI-10)
+## Local k6 performance harness
 
 The separately documented [performance harness](performance/README.md) provides
 an owned direct-mock fixture and an isolated Dev profile for the real pinned
@@ -83,7 +83,7 @@ customer execution, credentials, provisioning, cloud setup, paid services and
 automatic hosted CI are deliberately excluded. Nothing here freezes or modifies
 those future interfaces or advances the Jira ticket.
 
-## Inactive OpenAPI intake preflight (RRDAPI-14)
+## Inactive OpenAPI intake preflight
 
 `src/intake/preflight.ts` exports an in-memory preparation function for synthetic
 JSON/YAML strings. It is not connected to an upload endpoint, UI, store, runner,

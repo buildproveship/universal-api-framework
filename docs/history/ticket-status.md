@@ -20,3 +20,9 @@ approval remains separate from execution permission.
 RRDAPI-13's selected Contract Intake visual remains a separate Copilot-owned gate.
 Its selection does not settle the outstanding product/security policies. This
 slice adds no UI and makes no visual fidelity claim.
+
+## Section names before the 19 November 2026 guardrails change
+
+The README section "Local k6 performance harness" was titled "(RRDAPI-10)", the README section "Inactive OpenAPI
+intake preflight" was titled "(RRDAPI-14)", and `performance/README.md` was titled "Local k6 performance harness
+(RRDAPI-10)". The ticket keys are dropped from README headings because READMEs describe today's code, not ticket history.

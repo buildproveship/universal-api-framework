@@ -38,7 +38,7 @@ interface PortBinding {
   HostIp: string;
   HostPort: string;
 }
-export interface DockerContainer extends DockerResource {
+interface DockerContainer extends DockerResource {
   Id: string;
   Image: string;
   Config: { Labels: Labels };
@@ -56,7 +56,7 @@ interface DockerNetwork extends DockerResource {
   Internal: boolean;
   Driver: string;
 }
-export interface OwnedResources {
+interface OwnedResources {
   container: DockerContainer[];
   network: DockerNetwork[];
   volume: DockerResource[];
@@ -101,8 +101,8 @@ export interface ComposeModel {
   >;
   volumes?: Record<string, { labels?: Labels; external?: boolean }>;
 }
-export type DockerRun = (args: string[], timeout?: number) => Promise<string>;
-export type DockerJson = <T = unknown>(args: string[]) => Promise<T>;
+type DockerRun = (args: string[], timeout?: number) => Promise<string>;
+type DockerJson = <T = unknown>(args: string[]) => Promise<T>;
 import {
   settlementOf,
   withSettlement,
@@ -381,12 +381,12 @@ async function verifySource(
 
 /** Verify ownership before deleting anything, and recheck each resource immediately before removal. */
 /** The container fields cleanup reads: ownership labels, the service label and the stop state. */
-export interface CleanupContainer extends DockerResource {
+interface CleanupContainer extends DockerResource {
   Id: string;
   Config: { Labels: Labels };
   State?: { Running: boolean; ExitCode?: number };
 }
-export interface CleanupInventory {
+interface CleanupInventory {
   container: CleanupContainer[];
   network: DockerResource[];
   volume: DockerResource[];
@@ -604,7 +604,7 @@ export interface PlatformRuntime {
   evidence: () => Promise<PlatformEvidence>;
   close: () => Promise<Settlement>;
 }
-export interface PlatformEvidence {
+interface PlatformEvidence {
   project: string;
   baseUrl: string;
   image: string;
