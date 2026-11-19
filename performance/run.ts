@@ -165,7 +165,7 @@ function verifyK6() {
     !result.stdout.startsWith(`k6 v${pinnedK6Version}`)
   ) {
     throw new Error(
-      `k6 v${pinnedK6Version} must be on PATH (brew install k6, the Grafana package, or grafana/setup-k6-action).`,
+      `k6 v${pinnedK6Version} must be on PATH (brew install k6, the Grafana package, or the official Grafana apt package).`,
     );
   }
 

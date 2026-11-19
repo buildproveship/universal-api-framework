@@ -8,7 +8,7 @@ This is not a customer API runner or evidence of customer API behavior.
 
 Install k6 0.54.0 for the performance tests (`brew install k6`, the
 [official packages](https://grafana.com/docs/k6/latest/set-up/install-k6/), or
-`grafana/setup-k6-action` in CI) and the Node.js version that `package.json`
+the official apt package in CI) and the Node.js version that `package.json`
 `engines` requires (with npm), then run from the repository root:
 
 ```sh

@@ -31,7 +31,7 @@ npm run typecheck
 ```
 
 k6 0.54.0 must be on `PATH`: `brew install k6`, the official Grafana package, or
-`grafana/setup-k6-action` in CI. The runner refuses any other version.
+the official apt package in CI. The runner refuses any other version.
 The regular `npm test` suite does not require k6 or Docker. The performance
 suite uses direct fixtures and traffic-free/mocked runtime-policy tests; it does
 not start Platform containers automatically.
