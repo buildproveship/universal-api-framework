@@ -1,10 +1,11 @@
 # Light pull request checks. Owner decision of 18 Nov 2026 (docs/decisions.md): build, lint, typecheck and unit tests run on
-# every pull request. The k6 performance suites run on demand and nightly (performance.yml). This replaces the
+# every pull request, on the org self-hosted macOS runner (rr-local, 19 Nov 2026: hosted minutes are exhausted). The k6 performance suites run on demand and nightly (performance.yml). This replaces the
 # 12 Nov 2026 manual-only Actions decision (RRDPLAT-44) for this light set only.
 name: Pull request
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
 permissions:
   contents: read
   packages: read
@@ -13,7 +14,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   checks:
-    runs-on: ubuntu-24.04
+    if: github.event.pull_request.draft == false
+    runs-on: [self-hosted, rr-local]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -40,7 +42,8 @@ jobs:
       - name: Build and unit tests
         run: npm test
   security:
-    runs-on: ubuntu-24.04
+    if: github.event.pull_request.draft == false
+    runs-on: [self-hosted, rr-local]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -48,4 +51,4 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: gitleaks, trivy, semgrep and zizmor
-        uses: releaseready/config/.github/actions/security-scan@6248d46f291d5a3eec87fdf07da5e8f2b1b5becb # v2.1.0
+        uses: releaseready/config/.github/actions/security-scan@af0904fd8c082397432293c3aefe54a2f0a219dc # v2.2.0
