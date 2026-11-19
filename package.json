@@ -22,10 +22,12 @@
     "test:performance": "node --test --test-concurrency=1 --test-reporter=spec tests/performance/*.test.ts",
     "perf:dev:fixture-fail": "node performance/run.ts --profile dev --workload dev-smoke --fixture failing",
     "perf:dev:baseline": "node performance/run.ts --profile dev --workload dev-baseline",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run test:performance"
+    "check:guardrails": "releaseready-guardrails",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run check:guardrails && npm test && npm run test:performance"
   },
   "devDependencies": {
-    "@releaseready/config": "1.0.0",
+    "@apidevtools/json-schema-ref-parser": "^16.0.8",
+    "@releaseready/config": "^2.0.1",
     "@types/k6": "0.54.2",
     "@types/node": "22.19.0",
     "eslint": "10.15.0",

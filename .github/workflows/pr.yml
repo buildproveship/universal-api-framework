@@ -35,5 +35,7 @@ jobs:
         run: npm run lint
       - name: Format
         run: npm run format:check
+      - name: Guardrails
+        run: npm run check:guardrails
       - name: Build and unit tests
         run: npm test

@@ -1,4 +1,4 @@
-# Local k6 performance harness (RRDAPI-10)
+# Local k6 performance harness
 
 This harness uses checksum-pinned open-source k6 v0.54.0. It has two distinct
 local profiles and uses no Grafana Cloud subscription, hosted test runner or
