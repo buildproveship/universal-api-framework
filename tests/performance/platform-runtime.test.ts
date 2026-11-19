@@ -103,7 +103,15 @@ function model() {
           RR_ENVIRONMENT: "dev",
           PLAYWRIGHT_BROWSERS_PATH: "/ms-playwright",
         },
-        volumes: [{ type: "volume", source: "data", target: "/data" }],
+        volumes: [
+          { type: "volume", source: "data", target: "/data" },
+          {
+            type: "bind",
+            source: "/dev/null",
+            target: "/etc/code-quality/config.json",
+            read_only: true,
+          },
+        ],
       },
       wiremock: {
         ...common,
@@ -156,6 +164,17 @@ test("Merged model accepts only private loopback publication and isolated app na
     },
     (m) => {
       first(m.services.wiremock.volumes).read_only = false;
+    },
+    (m) => {
+      m.services.central.volumes[1] = {
+        type: "bind",
+        source: "/etc/passwd",
+        target: "/etc/code-quality/config.json",
+        read_only: true,
+      };
+    },
+    (m) => {
+      m.services.central.volumes.pop();
     },
   ];
   for (const mutate of mutations) {

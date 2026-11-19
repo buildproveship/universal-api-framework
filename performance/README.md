@@ -72,7 +72,7 @@ PLATFORM_ROOT="$BUILD/source"
 git init -q "$PLATFORM_ROOT"
 git -C "$PLATFORM_ROOT" fetch --depth=1 \
   https://github.com/releaseready/ReleaseReady.git \
-  2d6b7f048a3be2bc4df3347901f9a1439779ee91
+  35cb8c758170d114f819d22f263fb87ac40b1ead
 git -C "$PLATFORM_ROOT" checkout --detach FETCH_HEAD
 cd "$PLATFORM_ROOT"
 npm ci --ignore-scripts --os=linux --cpu=arm64 \
@@ -86,14 +86,14 @@ docker run --rm --network none --cap-drop ALL \
   -lc 'node --version; npm --version; npm run build'
 
 git diff --exit-code
-# Expected lock SHA-256: ce3a0effd7240b122241bb3e11094df93aeaddc0e45b7d2c6384007584ec8e7d
+# Expected lock SHA-256: 5f2925374c9f8c755767326e3d412ebf14c1231dec8ebf41025439b8cef11232
 shasum -a 256 package-lock.json
 
 docker build --pull=false --network=none \
-  --build-arg SOURCE_REVISION=2d6b7f048a3be2bc4df3347901f9a1439779ee91 \
-  --label releaseready.source.revision=2d6b7f048a3be2bc4df3347901f9a1439779ee91 \
-  --label releaseready.source.tree=3c1cc94c954d37dd4639bd14f0e665e8b1a317d8 \
-  --label releaseready.package-lock.sha256=ce3a0effd7240b122241bb3e11094df93aeaddc0e45b7d2c6384007584ec8e7d \
+  --build-arg SOURCE_REVISION=35cb8c758170d114f819d22f263fb87ac40b1ead \
+  --label releaseready.source.revision=35cb8c758170d114f819d22f263fb87ac40b1ead \
+  --label releaseready.source.tree=e82bdee0119a2019315a08678f775bdf96b3fd36 \
+  --label releaseready.package-lock.sha256=5f2925374c9f8c755767326e3d412ebf14c1231dec8ebf41025439b8cef11232 \
   --iidfile "$BUILD/image-id.txt" -f ops/dev/Dockerfile .
 PLATFORM_IMAGE=$(cat "$BUILD/image-id.txt")
 ```
