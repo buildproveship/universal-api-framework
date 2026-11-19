@@ -148,6 +148,7 @@ function strictReferences(
           return "document-schema-invalid";
         if (Array.isArray(target) && !ARRAY_INDEX.test(token))
           return "document-schema-invalid";
+        // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop -- every step is guarded by Object.hasOwn(target, token) and the walk only reads
         target = target[token];
       }
     }
