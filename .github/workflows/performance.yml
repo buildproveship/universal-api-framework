@@ -1,12 +1,14 @@
-# Heavy suites. Owner decision of 18 Nov 2026 (docs/decisions.md): the k6 performance suites (npm run test:performance, which needs k6 on PATH) run on demand and nightly,
-# not on every pull request (the light set is in pr.yml).
+# Heavy suites. Owner decision of 18 Nov 2026 (docs/decisions.md): the k6 performance suites (npm run test:performance, which needs k6 on PATH) run on demand and weekly (Sunday),
+# not on every pull request (the light set is in pr.yml). To keep Actions spend minimal (org budget $10/month) a scheduled
+# run is skipped when main has no new commit since the last successful run.
 # Runs on GitHub-hosted ubuntu-24.04 (owner decision, 20 Nov 2026); k6 is the pinned official linux-amd64 release binary, checksum-verified.
 name: Performance suites
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 18 * * *" # 02:00 Hong Kong time
+    - cron: "0 18 * * 0" # Sunday 18:00 UTC, Monday 02:00 Hong Kong time
 permissions:
+  actions: read
   contents: read
   packages: read
 concurrency:
@@ -17,30 +19,56 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
+      - name: Skip scheduled run when main is unchanged since the last success
+        id: gate
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          last="$(gh run list --workflow performance.yml --status success --json headSha --limit 1 --jq '.[0].headSha // ""')"
+          if [ "$last" = "$GITHUB_SHA" ]; then
+            echo "::notice::No new commit on main since the last successful run ($last); skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.gate.outputs.skip != 'true'
         with:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.gate.outputs.skip != 'true'
         with:
           node-version-file: .nvmrc
           cache: npm
           registry-url: https://npm.pkg.github.com
           scope: "@releaseready"
       - name: Install dependencies
+        if: steps.gate.outputs.skip != 'true'
         run: npm ci --no-audit --no-fund
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Official k6 release binary (https://github.com/grafana/k6/releases/tag/v0.54.0), version-pinned and verified against
       # its published SHA-256. The repository's Actions policy allows only GitHub-owned actions, so grafana/setup-k6-action is not usable.
+      - name: Cache k6 download
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/k6-download
+          key: k6-0.54.0-linux-amd64
+      # The cached archive is verified against the pinned SHA-256 on every run, so a cache hit never weakens the check.
       - name: Install k6 0.54.0 (official linux-amd64 binary)
+        if: steps.gate.outputs.skip != 'true'
         run: |
           set -euo pipefail
           K6_TGZ="k6-v0.54.0-linux-amd64.tar.gz"
-          curl -fsSL --retry 5 -o "$RUNNER_TEMP/$K6_TGZ" "https://github.com/grafana/k6/releases/download/v0.54.0/$K6_TGZ"
-          echo "c7f03434854f837b6790ee81572e4b0f955241974c79a43cbb9f8d0fef069589  $RUNNER_TEMP/$K6_TGZ" | sha256sum -c -
+          K6_DL="$HOME/.cache/k6-download"
+          mkdir -p "$K6_DL"
+          [ -f "$K6_DL/$K6_TGZ" ] || curl -fsSL --retry 5 -o "$K6_DL/$K6_TGZ" "https://github.com/grafana/k6/releases/download/v0.54.0/$K6_TGZ"
+          echo "c7f03434854f837b6790ee81572e4b0f955241974c79a43cbb9f8d0fef069589  $K6_DL/$K6_TGZ" | sha256sum -c -
           mkdir -p "$RUNNER_TEMP/k6-bin"
-          tar -xzf "$RUNNER_TEMP/$K6_TGZ" --strip-components=1 -C "$RUNNER_TEMP/k6-bin" --wildcards "*/k6"
+          tar -xzf "$K6_DL/$K6_TGZ" --strip-components=1 -C "$RUNNER_TEMP/k6-bin" --wildcards "*/k6"
           echo "$RUNNER_TEMP/k6-bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/k6-bin/k6" version
       - name: Performance suites
+        if: steps.gate.outputs.skip != 'true'
         run: npm run test:performance

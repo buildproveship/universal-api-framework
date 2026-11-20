@@ -2,6 +2,11 @@
 
 Owner decisions that change how this repository is built, checked or released. Newest first.
 
+## 20 November 2026: minimum Actions spend ($10/month organisation budget)
+
+- **Decided by:** the owner (no clients yet; the organisation's Actions budget is a $10/month hard stop).
+- **Scope:** `pr.yml` skips documentation-only pull requests (`**/*.md`, `docs/**`); no status check is required (branch protection is unavailable on the free plan), so skipped checks block nothing. `performance.yml` runs weekly (Sunday) and on demand, and a scheduled run exits early when `main` has no new commit since the last successful run. The k6 archive is cached and still verified against its pinned SHA-256 on every run. Every job has `timeout-minutes`.
+
 ## 18 November 2026: light pull request checks in GitHub Actions
 
 - **Decided by:** the owner, choosing "Apply all six (Recommended)" for the cross-repo programme (recommendations 1 and 2).
