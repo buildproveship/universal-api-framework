@@ -209,3 +209,7 @@ file/HTTP/secondary-parser hooks, process startup failure, deadline and heap-exh
 recovery. The same process/host memory and activation limitations described above
 still apply. No hashes, normalization, version identity, inventory/diff, storage,
 permissions, credentials, UI or live intake are added by this stage.
+
+## Licence
+
+Apache-2.0. See [LICENSE](LICENSE).
