@@ -1,5 +1,5 @@
 # Light pull request checks. Owner decision of 18 Nov 2026 (docs/decisions.md): build, lint, typecheck and unit tests run on
-# every pull request, on the org self-hosted macOS runner (rr-local, 19 Nov 2026: hosted minutes are exhausted). The k6 performance suites run on demand and nightly (performance.yml). This replaces the
+# every pull request, on GitHub-hosted ubuntu-24.04 (owner decision, 20 Nov 2026). The k6 performance suites run on demand and nightly (performance.yml). This replaces the
 # 12 Nov 2026 manual-only Actions decision (RRDPLAT-44) for this light set only.
 name: Pull request
 on:
@@ -15,7 +15,7 @@ concurrency:
 jobs:
   checks:
     if: github.event.pull_request.draft == false
-    runs-on: [self-hosted, rr-local]
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,7 +43,7 @@ jobs:
         run: npm test
   security:
     if: github.event.pull_request.draft == false
-    runs-on: [self-hosted, rr-local]
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

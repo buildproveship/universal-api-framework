@@ -1,6 +1,6 @@
 # Heavy suites. Owner decision of 18 Nov 2026 (docs/decisions.md): the k6 performance suites (npm run test:performance, which needs k6 on PATH) run on demand and nightly,
 # not on every pull request (the light set is in pr.yml).
-# Runs on the org self-hosted macOS runner (rr-local, 19 Nov 2026: hosted minutes are exhausted); k6 is the pinned official darwin-arm64 release binary, checksum-verified.
+# Runs on GitHub-hosted ubuntu-24.04 (owner decision, 20 Nov 2026); k6 is the pinned official linux-amd64 release binary, checksum-verified.
 name: Performance suites
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   suites:
-    runs-on: [self-hosted, rr-local]
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -32,14 +32,14 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Official k6 release binary (https://github.com/grafana/k6/releases/tag/v0.54.0), version-pinned and verified against
       # its published SHA-256. The repository's Actions policy allows only GitHub-owned actions, so grafana/setup-k6-action is not usable.
-      - name: Install k6 0.54.0 (official darwin-arm64 binary)
+      - name: Install k6 0.54.0 (official linux-amd64 binary)
         run: |
           set -euo pipefail
-          K6_ZIP="k6-v0.54.0-macos-arm64.zip"
-          curl -fsSL -o "$RUNNER_TEMP/$K6_ZIP" "https://github.com/grafana/k6/releases/download/v0.54.0/$K6_ZIP"
-          echo "9fb42e1343d28fc26e6efa1269283edf39ddc20767249869c84aa333741fc3ae  $RUNNER_TEMP/$K6_ZIP" | shasum -a 256 -c -
+          K6_TGZ="k6-v0.54.0-linux-amd64.tar.gz"
+          curl -fsSL --retry 5 -o "$RUNNER_TEMP/$K6_TGZ" "https://github.com/grafana/k6/releases/download/v0.54.0/$K6_TGZ"
+          echo "c7f03434854f837b6790ee81572e4b0f955241974c79a43cbb9f8d0fef069589  $RUNNER_TEMP/$K6_TGZ" | sha256sum -c -
           mkdir -p "$RUNNER_TEMP/k6-bin"
-          unzip -q -j -o "$RUNNER_TEMP/$K6_ZIP" "*/k6" -d "$RUNNER_TEMP/k6-bin"
+          tar -xzf "$RUNNER_TEMP/$K6_TGZ" --strip-components=1 -C "$RUNNER_TEMP/k6-bin" --wildcards "*/k6"
           echo "$RUNNER_TEMP/k6-bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/k6-bin/k6" version
       - name: Performance suites
