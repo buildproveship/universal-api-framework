@@ -1,0 +1,11 @@
+{
+  "$schema": "./node_modules/@releaseready/config/guardrails/config.schema.json",
+  "allow": [
+    {
+      "rule": "oversized-source-file",
+      "path": "performance/platform-runtime.ts",
+      "max": 1,
+      "reason": "hand-written performance platform runtime (Docker image and context checks, owned-resource cleanup, startup settlement and startPlatformRuntime) kept as one module today; currently 1030 lines, a split candidate (by checks / cleanup / startup) tracked for follow-up under RRDSCRUM-501"
+    }
+  ]
+}
