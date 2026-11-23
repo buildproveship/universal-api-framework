@@ -71,7 +71,7 @@ BUILD=$(mktemp -d "${TMPDIR:-/tmp}/rrdapi-platform.XXXXXX")
 PLATFORM_ROOT="$BUILD/source"
 git init -q "$PLATFORM_ROOT"
 git -C "$PLATFORM_ROOT" fetch --depth=1 \
-  https://github.com/releaseready/ReleaseReady.git \
+  https://github.com/buildproveship/buildproveship.git \
   35cb8c758170d114f819d22f263fb87ac40b1ead
 git -C "$PLATFORM_ROOT" checkout --detach FETCH_HEAD
 cd "$PLATFORM_ROOT"

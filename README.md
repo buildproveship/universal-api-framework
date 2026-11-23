@@ -5,7 +5,7 @@ preparation slice of [RRDAPI-8](https://noisegatemusicstudios.atlassian.net/brow
 This is not a customer API runner or evidence of customer API behavior.
 
 This repository owns API testing across the ReleaseReady frameworks (native `fetch` and
-k6). [universal-playwright-framework](https://github.com/releaseready/universal-playwright-framework)
+k6). [universal-playwright-framework](https://github.com/buildproveship/universal-playwright-framework)
 is browser-only and has no API client.
 
 ## Setup and run
