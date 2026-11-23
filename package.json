@@ -28,7 +28,7 @@
   },
   "devDependencies": {
     "@apidevtools/json-schema-ref-parser": "^16.0.8",
-    "@buildproveship/config": "^5.0.1",
+    "@buildproveship/config": "^5.1.0",
     "@types/k6": "0.54.2",
     "@types/node": "22.19.0",
     "eslint": "10.15.0",
