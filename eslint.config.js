@@ -1,5 +1,5 @@
-// ESLint: the shared @releaseready/config rules plus this repo's local settings, each with its reason.
-import { releaseready } from "@releaseready/config/eslint";
+// ESLint: the shared @buildproveship/config rules plus this repo's local settings, each with its reason.
+import { releaseready } from "@buildproveship/config/eslint";
 import { defineConfig } from "eslint/config";
 
 export default defineConfig(
