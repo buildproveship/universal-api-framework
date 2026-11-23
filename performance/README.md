@@ -5,7 +5,7 @@ local profiles and uses no Grafana Cloud subscription, hosted test runner or
 live provider credentials:
 
 - `direct-mock`: a disposable synthetic widget fixture owned by this harness.
-  This checks the harness, not the ReleaseReady application.
+  This checks the harness, not the BuildProveShip application.
 - `dev`: the real pinned Platform application and actual pinned WireMock,
   using Platform's unchanged Compose file and existing mapping files. Each run
   creates its own synthetic store, isolated networks and random loopback port.
