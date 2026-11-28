@@ -2,7 +2,7 @@
   "name": "universal-api-framework",
   "version": "0.0.0",
   "private": true,
-  "description": "Standalone local-only API smoke test scaffold",
+  "description": "API testing helpers and local API smoke scaffold for BuildProveShip test frameworks",
   "type": "module",
   "packageManager": "npm@11.4.2",
   "engines": {
@@ -43,5 +43,11 @@
     "yaml": "2.9.1"
   },
   "prettier": "@buildproveship/config/prettier",
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "exports": {
+    "./test-data-restore/v1": {
+      "types": "./dist/src/test-data-restore/index.d.ts",
+      "default": "./dist/src/test-data-restore/index.js"
+    }
+  }
 }
