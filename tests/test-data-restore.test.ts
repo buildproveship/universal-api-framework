@@ -9,19 +9,19 @@ import {
   createRestoreClient,
 } from "../src/test-data-restore/index.js";
 
-type Call = {
+interface Call {
   url: string;
   method: string;
   body?: string | undefined;
   auth?: string | undefined;
-};
+}
 
 function fakeFetch(respond: (c: Call) => { status?: number; json?: unknown }): {
   fetchImpl: typeof fetch;
   calls: Call[];
 } {
   const calls: Call[] = [];
-  const fetchImpl = (async (url: string, init: RequestInit = {}) => {
+  const fetchImpl = ((url: string, init: RequestInit = {}) => {
     const headers = (init.headers ?? {}) as Record<string, string>;
     const call: Call = {
       url,
@@ -31,9 +31,11 @@ function fakeFetch(respond: (c: Call) => { status?: number; json?: unknown }): {
     };
     calls.push(call);
     const r = respond(call);
-    return new Response(JSON.stringify(r.json ?? {}), {
-      status: r.status ?? 200,
-    });
+    return Promise.resolve(
+      new Response(JSON.stringify(r.json ?? {}), {
+        status: r.status ?? 200,
+      }),
+    );
   }) as unknown as typeof fetch;
   return { fetchImpl, calls };
 }
@@ -66,8 +68,10 @@ test("restoreAll posts the baseline restore then clears the mailbox", async () =
       "DELETE http://mail.test/api/v1/messages",
     ],
   );
-  assert.equal(calls[0]?.auth, "Bearer t");
-  assert.equal(calls[0]?.body, '{"scope":"baseline"}');
+  const first = calls[0];
+  assert.ok(first);
+  assert.equal(first.auth, "Bearer t");
+  assert.equal(first.body, '{"scope":"baseline"}');
 });
 
 test("an unconfirmed or failed restore throws and the mailbox is left alone", async () => {
