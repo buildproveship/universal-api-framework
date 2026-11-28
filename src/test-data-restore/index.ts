@@ -59,7 +59,9 @@ export function createRestoreClient(
   async function call(url: string, init: RequestInit): Promise<Response> {
     const response = await doFetch(url, init);
     if (!response.ok) {
-      throw new Error(`${init.method ?? "GET"} ${url} failed: ${response.status}`);
+      throw new Error(
+        `${init.method ?? "GET"} ${url} failed: ${response.status}`,
+      );
     }
     return response;
   }

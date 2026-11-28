@@ -9,11 +9,17 @@ import {
   createRestoreClient,
 } from "../src/test-data-restore/index.js";
 
-type Call = { url: string; method: string; body?: string; auth?: string };
+type Call = {
+  url: string;
+  method: string;
+  body?: string | undefined;
+  auth?: string | undefined;
+};
 
-function fakeFetch(
-  respond: (c: Call) => { status?: number; json?: unknown },
-): { fetchImpl: typeof fetch; calls: Call[] } {
+function fakeFetch(respond: (c: Call) => { status?: number; json?: unknown }): {
+  fetchImpl: typeof fetch;
+  calls: Call[];
+} {
   const calls: Call[] = [];
   const fetchImpl = (async (url: string, init: RequestInit = {}) => {
     const headers = (init.headers ?? {}) as Record<string, string>;
@@ -48,20 +54,31 @@ test("production and unknown environments are refused", () => {
 
 test("restoreAll posts the baseline restore then clears the mailbox", async () => {
   const { fetchImpl, calls } = fakeFetch(() => ({ json: { restored: true } }));
-  await createRestoreClient({ ...base, environment: "dev", fetchImpl }).restoreAll();
+  await createRestoreClient({
+    ...base,
+    environment: "dev",
+    fetchImpl,
+  }).restoreAll();
   assert.deepEqual(
     calls.map((c) => `${c.method} ${c.url}`),
-    ["POST http://app.test/api/dev/test-data/restore", "DELETE http://mail.test/api/v1/messages"],
+    [
+      "POST http://app.test/api/dev/test-data/restore",
+      "DELETE http://mail.test/api/v1/messages",
+    ],
   );
-  assert.equal(calls[0].auth, "Bearer t");
-  assert.equal(calls[0].body, '{"scope":"baseline"}');
+  assert.equal(calls[0]?.auth, "Bearer t");
+  assert.equal(calls[0]?.body, '{"scope":"baseline"}');
 });
 
 test("an unconfirmed or failed restore throws and the mailbox is left alone", async () => {
   for (const reply of [{ json: { restored: false } }, { status: 500 }]) {
     const { fetchImpl, calls } = fakeFetch(() => reply);
     await assert.rejects(
-      createRestoreClient({ ...base, environment: "dev", fetchImpl }).restoreAll(),
+      createRestoreClient({
+        ...base,
+        environment: "dev",
+        fetchImpl,
+      }).restoreAll(),
     );
     assert.equal(calls.length, 1);
   }
@@ -73,6 +90,10 @@ test("latestCode reads the six-digit code from the newest message to that addres
       ? { json: { messages: [{ ID: "m1" }] } }
       : { json: { Text: "Your code is 482913. Thanks" } },
   );
-  const client = createRestoreClient({ ...base, environment: "uat", fetchImpl });
+  const client = createRestoreClient({
+    ...base,
+    environment: "uat",
+    fetchImpl,
+  });
   assert.equal(await client.latestCode("a@synthetic.test"), "482913");
 });
